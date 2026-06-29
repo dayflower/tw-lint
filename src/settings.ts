@@ -1,0 +1,92 @@
+import { RULES, type RuleName, type RuleSeverity } from './types.js'
+
+/** Subset of `tailwindCSS.*` settings relevant to linting. */
+export interface TailwindCssSettings {
+  validate: boolean
+  lint: Record<RuleName, RuleSeverity>
+  includeLanguages: Record<string, string>
+  classAttributes: string[]
+  classFunctions: string[]
+  experimental: {
+    classRegex: string[] | [string, string][]
+    configFile: string | Record<string, string | string[]> | null
+  }
+  files: {
+    exclude: string[]
+  }
+}
+
+/**
+ * Default lint severities. These mirror the defaults shipped by the official
+ * Tailwind CSS IntelliSense extension so behaviour matches a typical editor.
+ */
+function defaultLintRules(): Record<RuleName, RuleSeverity> {
+  return {
+    cssConflict: 'warning',
+    invalidApply: 'error',
+    invalidScreen: 'error',
+    invalidVariant: 'error',
+    deprecatedAtRule: 'warning',
+    invalidConfigPath: 'error',
+    invalidTailwindDirective: 'error',
+    invalidSourceDirective: 'error',
+    recommendedVariantOrder: 'warning',
+    usedBlocklistedClass: 'warning',
+    suggestCanonicalClasses: 'warning',
+  }
+}
+
+export interface SettingsOverrides {
+  /** Per-rule severity overrides. */
+  rules?: Partial<Record<RuleName, RuleSeverity>>
+  /** Additional language id remapping (e.g. `{ plaintext: 'html' }`). */
+  includeLanguages?: Record<string, string>
+  classAttributes?: string[]
+  classFunctions?: string[]
+  /** Force a specific config file (maps to `tailwindCSS.experimental.configFile`). */
+  configFile?: string | Record<string, string | string[]> | null
+}
+
+export function createTailwindSettings(
+  overrides: SettingsOverrides = {},
+): TailwindCssSettings {
+  return {
+    validate: true,
+    lint: { ...defaultLintRules(), ...overrides.rules },
+    includeLanguages: { ...overrides.includeLanguages },
+    classAttributes: overrides.classAttributes ?? ['class', 'className', 'ngClass', 'class:list'],
+    classFunctions: overrides.classFunctions ?? ['clsx', 'cva', 'cn', 'tw', 'twMerge', 'twJoin'],
+    experimental: {
+      classRegex: [],
+      configFile: overrides.configFile ?? null,
+    },
+    files: {
+      exclude: ['**/.git/**', '**/node_modules/**', '**/.hg/**', '**/.svn/**'],
+    },
+  }
+}
+
+/** Minimal `editor` settings the server may request. */
+export function createEditorSettings(): Record<string, unknown> {
+  return {
+    tabSize: 2,
+  }
+}
+
+/** Parses a `rule=severity` CLI override string into a rule entry. */
+export function parseRuleOverride(input: string): [RuleName, RuleSeverity] {
+  const [rawRule, rawSeverity] = input.split('=')
+  const rule = rawRule?.trim()
+  const severity = rawSeverity?.trim()
+
+  if (!rule || !severity) {
+    throw new Error(`Invalid --severity value "${input}". Expected "rule=ignore|warning|error".`)
+  }
+  if (!(RULES as readonly string[]).includes(rule)) {
+    throw new Error(`Unknown rule "${rule}". Known rules: ${RULES.join(', ')}.`)
+  }
+  if (severity !== 'ignore' && severity !== 'warning' && severity !== 'error') {
+    throw new Error(`Invalid severity "${severity}" for rule "${rule}". Expected ignore|warning|error.`)
+  }
+  return [rule as RuleName, severity]
+}

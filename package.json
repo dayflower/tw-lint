@@ -1,0 +1,60 @@
+{
+  "name": "@dayflower/tw-lint",
+  "version": "0.1.0",
+  "description": "An unofficial Tailwind CSS linter CLI powered by the Tailwind CSS language server.",
+  "type": "module",
+  "bin": {
+    "tw-lint": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test:fixtures": "npm --prefix test/fixtures/v3 install --no-audit --no-fund && npm --prefix test/fixtures/v4 install --no-audit --no-fund",
+    "pretest": "npm run test:fixtures",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "tailwind",
+    "tailwindcss",
+    "lint",
+    "linter",
+    "cli",
+    "lsp"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@tailwindcss/language-server": "^0.14.29",
+    "cac": "^7.0.0",
+    "picocolors": "^1.1.1",
+    "tinyglobby": "^0.2.17",
+    "vscode-jsonrpc": "^9.0.0",
+    "vscode-languageserver-protocol": "^3.18.1",
+    "vscode-uri": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
