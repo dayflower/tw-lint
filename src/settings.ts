@@ -1,3 +1,4 @@
+import { COMMON_IGNORE } from "./languages.js";
 import {
   invalidSeverityMessage,
   isRuleName,
@@ -80,7 +81,8 @@ export function createTailwindSettings(
       configFile: overrides.configFile ?? null,
     },
     files: {
-      exclude: ["**/.git/**", "**/node_modules/**", "**/.hg/**", "**/.svn/**"],
+      // Paths the language server skips while scanning the workspace.
+      exclude: [...COMMON_IGNORE, "**/.hg/**", "**/.svn/**"],
     },
   };
 }

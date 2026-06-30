@@ -4,7 +4,7 @@ import {
   type Range,
   type TextEdit,
 } from "vscode-languageserver-protocol/node";
-import { URI } from "vscode-uri";
+import { normalizeUri } from "./uri.js";
 
 /** Converts a zero-based LSP position to an absolute string offset. */
 function offsetAt(text: string, line: number, character: number): number {
@@ -64,7 +64,7 @@ export function collectFixEdits(
   actions: (Command | CodeAction)[],
   targetUri: string,
 ): TextEdit[] {
-  const normalizedTarget = URI.parse(targetUri).toString();
+  const normalizedTarget = normalizeUri(targetUri);
   const edits: TextEdit[] = [];
 
   for (const action of actions) {
@@ -90,7 +90,7 @@ function collectEditsForUri(
 
   if (edit.changes) {
     for (const [uri, textEdits] of Object.entries(edit.changes)) {
-      if (URI.parse(uri).toString() === normalizedTarget) return textEdits;
+      if (normalizeUri(uri) === normalizedTarget) return textEdits;
     }
   }
 
@@ -98,9 +98,7 @@ function collectEditsForUri(
     const result: TextEdit[] = [];
     for (const change of edit.documentChanges) {
       if ("textDocument" in change && "edits" in change) {
-        if (
-          URI.parse(change.textDocument.uri).toString() === normalizedTarget
-        ) {
+        if (normalizeUri(change.textDocument.uri) === normalizedTarget) {
           for (const e of change.edits) {
             // Skip annotated/snippet edits we can't represent as plain text.
             if ("range" in e && "newText" in e) result.push(e as TextEdit);

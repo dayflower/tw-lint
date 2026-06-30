@@ -1,6 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { glob } from "tinyglobby";
-import { URI } from "vscode-uri";
 import { TailwindLanguageClient } from "./client.js";
 import { applyTextEdits, collectFixEdits } from "./fix.js";
 import {
@@ -11,6 +10,7 @@ import {
 import { summarize, toLintMessages } from "./reporter.js";
 import type { TailwindCssSettings } from "./settings.js";
 import type { LintResult, LintSummary } from "./types.js";
+import { fileUri } from "./uri.js";
 
 export type FixMode = "none" | "apply" | "dry-run";
 
@@ -104,7 +104,7 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
           source.text,
           diagnostics,
         );
-        const edits = collectFixEdits(actions, URI.file(filePath).toString());
+        const edits = collectFixEdits(actions, fileUri(filePath));
         if (edits.length > 0) {
           const fixed = applyTextEdits(source.text, edits);
           if (fixed !== source.text) {

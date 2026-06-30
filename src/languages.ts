@@ -40,13 +40,17 @@ export const DEFAULT_GLOBS = [
   "**/*.{html,htm,vue,svelte,astro,js,cjs,mjs,jsx,ts,mts,cts,tsx,css,pcss,postcss,scss,sass,less,php,twig,erb,hbs,handlebars,md,mdx}",
 ];
 
-/** Globs that are always ignored. */
-export const DEFAULT_IGNORE = [
-  "**/node_modules/**",
-  "**/dist/**",
-  "**/build/**",
-  "**/.git/**",
-];
+/**
+ * Version-control and dependency directories ignored by both file discovery
+ * (globbing) and the language server's own file scanning.
+ */
+export const COMMON_IGNORE = ["**/node_modules/**", "**/.git/**"];
+
+/**
+ * Globs ignored during file discovery. Adds common build-output directories on
+ * top of the shared VCS/dependency ignores.
+ */
+export const DEFAULT_IGNORE = [...COMMON_IGNORE, "**/dist/**", "**/build/**"];
 
 /** Returns the LSP languageId for a file, or `undefined` if unsupported. */
 export function languageIdForFile(filePath: string): string | undefined {

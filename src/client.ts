@@ -21,8 +21,8 @@ import {
   StreamMessageWriter,
   UnregistrationRequest,
 } from "vscode-languageserver-protocol/node";
-import { URI } from "vscode-uri";
 import { createEditorSettings, type TailwindCssSettings } from "./settings.js";
+import { fileUri, normalizeUri } from "./uri.js";
 
 const require = createRequire(import.meta.url);
 
@@ -129,7 +129,7 @@ export class TailwindLanguageClient {
     this.registerHandlers(connection);
     connection.listen();
 
-    const rootUri = URI.file(this.options.cwd).toString();
+    const rootUri = fileUri(this.options.cwd);
     await connection.sendRequest(InitializeRequest.type, {
       processId: process.pid,
       clientInfo: { name: "tw-lint", version: "0.1.0" },
@@ -201,8 +201,8 @@ export class TailwindLanguageClient {
   /** Opens a document (version 1). Does not wait for diagnostics. */
   async open(doc: DocumentInput): Promise<void> {
     const connection = this.requireConnection();
-    const uri = URI.file(doc.filePath).toString();
-    this.versions.set(normalizeUri(uri), 1);
+    const uri = fileUri(doc.filePath);
+    this.versions.set(uri, 1);
     await connection.sendNotification(DidOpenTextDocumentNotification.type, {
       textDocument: {
         uri,
@@ -234,8 +234,8 @@ export class TailwindLanguageClient {
    */
   async validate(filePath: string, text: string): Promise<Diagnostic[]> {
     const connection = this.requireConnection();
-    const uri = URI.file(filePath).toString();
-    const key = normalizeUri(uri);
+    const uri = fileUri(filePath);
+    const key = uri;
     const version = (this.versions.get(key) ?? 1) + 1;
     this.versions.set(key, version);
 
@@ -270,7 +270,7 @@ export class TailwindLanguageClient {
   ): Promise<(Command | CodeAction)[]> {
     if (diagnostics.length === 0) return [];
     const connection = this.requireConnection();
-    const uri = URI.file(filePath).toString();
+    const uri = fileUri(filePath);
     const result = await connection.sendRequest(CodeActionRequest.type, {
       textDocument: { uri },
       range: fullRange(text),
@@ -299,10 +299,6 @@ export class TailwindLanguageClient {
     this.connection = undefined;
     this.child = undefined;
   }
-}
-
-function normalizeUri(uri: string): string {
-  return URI.parse(uri).toString();
 }
 
 function fullRange(text: string) {
