@@ -27,6 +27,8 @@
     "build": "tsup",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
+    "check": "biome check .",
+    "fix": "biome check --write .",
     "test:fixtures": "npm --prefix test/fixtures/v3 install --no-audit --no-fund && npm --prefix test/fixtures/v4 install --no-audit --no-fund",
     "pretest": "npm run test:fixtures",
     "test": "vitest run",
@@ -51,6 +53,7 @@
     "vscode-uri": "^3.1.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^22.0.0",
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
@@ -7,6 +7,6 @@ export default defineConfig({
     hookTimeout: 60_000,
     // Each test starts its own server; avoid running them concurrently.
     fileParallelism: false,
-    pool: 'forks',
+    pool: "forks",
   },
-})
+});

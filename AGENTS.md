@@ -21,6 +21,8 @@ as `tw-lint`.
 npm run build       # bundle with tsup -> dist/ (cli.js, index.js, *.d.ts)
 npm run dev         # run the CLI from source via tsx (src/cli.ts)
 npm run typecheck   # tsc --noEmit
+npm run check       # biome check . (lint + format + import sort, no writes)
+npm run fix         # biome check --write . (apply safe fixes)
 npm test            # vitest run (pretest installs the test fixtures' deps)
 npm run test:watch  # vitest in watch mode
 ```
@@ -55,6 +57,10 @@ detect a Tailwind project.
   defaults in sync with the language service.
 - Build is bundled by `tsup` (see `tsup.config.ts`); the published package ships
   only `dist/`.
+- Linting and formatting are handled by [Biome](https://biomejs.dev/) (see
+  `biome.json`): double quotes and semicolons. Run `npm run fix` before
+  committing, and `npm run check` must pass. The intentionally-malformed
+  `test/fixtures/**/*.html` are excluded from Biome.
 
 ## Testing notes
 
