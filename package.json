@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "prepublishOnly": "npm run check && npm run typecheck && npm run build",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "check": "biome check .",
@@ -44,6 +45,14 @@
     "lsp"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dayflower/tw-lint.git"
+  },
+  "homepage": "https://github.com/dayflower/tw-lint#readme",
+  "bugs": {
+    "url": "https://github.com/dayflower/tw-lint/issues"
+  },
   "dependencies": {
     "@tailwindcss/language-server": "^0.14.29",
     "cac": "^7.0.0",
