@@ -29,12 +29,21 @@ export function summarize(
   let errorCount = 0;
   let warningCount = 0;
   let fixCount = 0;
+  let timedOutCount = 0;
   for (const result of results) {
     errorCount += result.errorCount;
     warningCount += result.warningCount;
     fixCount += result.fixCount ?? 0;
+    if (result.timedOut) timedOutCount += 1;
   }
-  return { results, errorCount, warningCount, fixCount, noProjectDetected };
+  return {
+    results,
+    errorCount,
+    warningCount,
+    fixCount,
+    noProjectDetected,
+    timedOutCount,
+  };
 }
 
 /**
@@ -110,11 +119,13 @@ export function formatJson(summary: LintSummary): string {
       warningCount: summary.warningCount,
       fixCount: summary.fixCount,
       noProjectDetected: summary.noProjectDetected,
+      timedOutCount: summary.timedOutCount,
       results: summary.results.map((result) => ({
         filePath: result.filePath,
         errorCount: result.errorCount,
         warningCount: result.warningCount,
         fixCount: result.fixCount ?? 0,
+        timedOut: result.timedOut ?? false,
         messages: result.messages,
       })),
     },

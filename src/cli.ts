@@ -91,11 +91,27 @@ async function main(): Promise<number> {
 
   // The exit code is computed from the unfiltered counts so that --quiet only
   // suppresses output and never weakens the --max-warnings threshold.
-  const exitCode = resolveExitCode(
+  let exitCode = resolveExitCode(
     summary.errorCount,
     summary.warningCount,
     options.maxWarnings,
   );
+
+  // A timeout means the language server never reported diagnostics for one or
+  // more files, so the results are incomplete. Treat that as an operational
+  // failure (exit 2) that takes precedence over the lint-based exit codes,
+  // rather than silently reporting those files as problem-free.
+  if (summary.timedOutCount > 0) {
+    const files = summary.results
+      .filter((result) => result.timedOut)
+      .map((result) => path.relative(cwd, result.filePath) || result.filePath)
+      .join(", ");
+    process.stderr.write(
+      `tw-lint: timed out waiting for diagnostics: ${files}. ` +
+        "Results may be incomplete.\n",
+    );
+    exitCode = 2;
+  }
 
   const reported = options.quiet ? applyQuietFilter(summary) : summary;
 

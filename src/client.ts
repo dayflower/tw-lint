@@ -36,6 +36,16 @@ function resolveServerEntry(): string {
   );
 }
 
+/** Outcome of a single document validation. */
+export type ValidationResult =
+  | { kind: "diagnostics"; diagnostics: Diagnostic[] }
+  | { kind: "timeout" };
+
+interface PublishWaiter {
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+
 export interface DocumentInput {
   /** Absolute file path. */
   filePath: string;
@@ -101,11 +111,17 @@ export class TailwindLanguageClient {
   private connection: ProtocolConnection | undefined;
 
   private readonly diagnostics = new Map<string, Diagnostic[]>();
-  private readonly publishWaiters = new Map<string, () => void>();
+  private readonly publishWaiters = new Map<string, PublishWaiter>();
   private readonly versions = new Map<string, number>();
 
   private projectInitialized = false;
   private projectResolve: (() => void) | undefined;
+  private projectReject: ((error: Error) => void) | undefined;
+
+  /** Set when the connection errors or closes unexpectedly. */
+  private serverError: Error | undefined;
+  /** True while dispose() is tearing down the connection on purpose. */
+  private disposing = false;
 
   constructor(private readonly options: TailwindLanguageClientOptions) {}
 
@@ -162,10 +178,10 @@ export class TailwindLanguageClient {
     connection.onNotification(PublishDiagnosticsNotification.type, (params) => {
       const key = normalizeUri(params.uri);
       this.diagnostics.set(key, params.diagnostics);
-      const resolve = this.publishWaiters.get(key);
-      if (resolve) {
+      const waiter = this.publishWaiters.get(key);
+      if (waiter) {
         this.publishWaiters.delete(key);
-        resolve();
+        waiter.resolve();
       }
     });
 
@@ -187,8 +203,29 @@ export class TailwindLanguageClient {
     connection.onNotification("window/showMessage", () => {});
     connection.onNotification("@/tailwindCSS/warn", () => {});
 
-    connection.onError(() => {});
-    connection.onClose(() => {});
+    connection.onError(([error]) =>
+      this.handleServerError(
+        error instanceof Error ? error : new Error(String(error)),
+      ),
+    );
+    connection.onClose(() =>
+      this.handleServerError(
+        new Error("Language server connection closed unexpectedly"),
+      ),
+    );
+  }
+
+  /**
+   * Records an unexpected connection failure and unblocks any pending waiters
+   * by rejecting them, so callers see the failure instead of a silent empty
+   * result. A close triggered by dispose() is expected and ignored.
+   */
+  private handleServerError(error: Error): void {
+    if (this.disposing || this.serverError) return;
+    this.serverError = error;
+    for (const waiter of this.publishWaiters.values()) waiter.reject(error);
+    this.publishWaiters.clear();
+    this.projectReject?.(error);
   }
 
   private configurationFor(section: string | undefined): unknown {
@@ -199,6 +236,7 @@ export class TailwindLanguageClient {
 
   private markProjectInitialized(): void {
     this.projectInitialized = true;
+    this.projectReject = undefined;
     this.projectResolve?.();
   }
 
@@ -217,18 +255,30 @@ export class TailwindLanguageClient {
     });
   }
 
-  /** Resolves once a Tailwind project has initialized, or after a timeout. */
+  /**
+   * Resolves once a Tailwind project has initialized, or after a timeout.
+   * Rejects if the connection fails before a project is detected.
+   */
   async waitForProject(): Promise<boolean> {
+    if (this.serverError) throw this.serverError;
     if (this.projectInitialized) return true;
     const timeout = this.options.projectTimeoutMs ?? 20_000;
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, timeout);
+    return new Promise<boolean>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.projectReject = undefined;
+        resolve(this.projectInitialized);
+      }, timeout);
       this.projectResolve = () => {
         clearTimeout(timer);
-        resolve();
+        this.projectReject = undefined;
+        resolve(true);
+      };
+      this.projectReject = (error) => {
+        clearTimeout(timer);
+        this.projectResolve = undefined;
+        reject(error);
       };
     });
-    return this.projectInitialized;
   }
 
   /**
@@ -236,7 +286,8 @@ export class TailwindLanguageClient {
    * `didChange` with the given text, and resolves with the resulting
    * diagnostics once they are published.
    */
-  async validate(filePath: string, text: string): Promise<Diagnostic[]> {
+  async validate(filePath: string, text: string): Promise<ValidationResult> {
+    if (this.serverError) throw this.serverError;
     const connection = this.requireConnection();
     const uri = fileUri(filePath);
     const key = uri;
@@ -248,20 +299,38 @@ export class TailwindLanguageClient {
       textDocument: { uri, version },
       contentChanges: [{ text }],
     });
-    await published;
-    return this.diagnostics.get(key) ?? [];
+    const outcome = await published;
+    if (outcome === "timeout") return { kind: "timeout" };
+    return {
+      kind: "diagnostics",
+      diagnostics: this.diagnostics.get(key) ?? [],
+    };
   }
 
-  private waitForNextPublish(key: string): Promise<void> {
+  /**
+   * Resolves with "published" when the matching diagnostics arrive, or
+   * "timeout" if none do within the window. Rejects if the connection fails.
+   */
+  private waitForNextPublish(key: string): Promise<"published" | "timeout"> {
     const timeout = this.options.documentTimeoutMs ?? 15_000;
-    return new Promise<void>((resolve) => {
+    return new Promise<"published" | "timeout">((resolve, reject) => {
+      if (this.serverError) {
+        reject(this.serverError);
+        return;
+      }
       const timer = setTimeout(() => {
         this.publishWaiters.delete(key);
-        resolve();
+        resolve("timeout");
       }, timeout);
-      this.publishWaiters.set(key, () => {
-        clearTimeout(timer);
-        resolve();
+      this.publishWaiters.set(key, {
+        resolve: () => {
+          clearTimeout(timer);
+          resolve("published");
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
       });
     });
   }
@@ -289,6 +358,7 @@ export class TailwindLanguageClient {
   }
 
   async dispose(): Promise<void> {
+    this.disposing = true;
     const connection = this.connection;
     if (connection) {
       try {

@@ -34,6 +34,20 @@ describe("runLint (v4 project)", () => {
     expect(summary.warningCount).toBeGreaterThan(0);
   });
 
+  it("flags documents whose diagnostics time out", async () => {
+    const summary = await runLint({
+      cwd,
+      patterns: ["index.html"],
+      settings: createTailwindSettings(),
+      // Far shorter than an IPC round-trip, so the publish never arrives in time.
+      documentTimeoutMs: 1,
+    });
+
+    expect(summary.timedOutCount).toBeGreaterThan(0);
+    expect(summary.results[0].timedOut).toBe(true);
+    expect(summary.results[0].messages).toHaveLength(0);
+  });
+
   it("honours per-rule severity overrides", async () => {
     const summary = await runLint({
       cwd,

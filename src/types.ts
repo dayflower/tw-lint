@@ -83,6 +83,8 @@ export interface LintResult {
   fixCount?: number;
   /** Source text after fixes were applied (only set when running with fix). */
   output?: string;
+  /** True when diagnostics never arrived for this file before timing out. */
+  timedOut?: boolean;
 }
 
 export interface LintSummary {
@@ -92,4 +94,6 @@ export interface LintSummary {
   fixCount: number;
   /** True when no Tailwind project could be detected for the linted files. */
   noProjectDetected: boolean;
+  /** Number of files whose diagnostics timed out (results may be incomplete). */
+  timedOutCount: number;
 }

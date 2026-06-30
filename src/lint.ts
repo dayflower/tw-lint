@@ -94,7 +94,10 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
     for (const { filePath } of files) {
       const source = sources.get(filePath);
       if (!source) continue;
-      let diagnostics = await client.validate(filePath, source.text);
+      let timedOut = false;
+      const initial = await client.validate(filePath, source.text);
+      let diagnostics = initial.kind === "timeout" ? [] : initial.diagnostics;
+      if (initial.kind === "timeout") timedOut = true;
       let fixCount = 0;
       let output: string | undefined;
 
@@ -114,7 +117,13 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
               await writeFile(filePath, fixed, "utf8");
             }
             // Re-lint the fixed content so remaining problems are reported.
-            diagnostics = await client.validate(filePath, fixed);
+            const revalidated = await client.validate(filePath, fixed);
+            if (revalidated.kind === "timeout") {
+              timedOut = true;
+              diagnostics = [];
+            } else {
+              diagnostics = revalidated.diagnostics;
+            }
           }
         }
       }
@@ -127,6 +136,7 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
         warningCount: messages.filter((m) => m.severity === "warning").length,
         ...(fixCount > 0 ? { fixCount } : {}),
         ...(output !== undefined ? { output } : {}),
+        ...(timedOut ? { timedOut: true } : {}),
       });
     }
 
