@@ -12,13 +12,13 @@ publishes, reports them on the CLI, and can apply the server's quick-fixes. The
 same engine powers the *Tailwind CSS IntelliSense* editor extension, so the lint
 rules and their default severities mirror its `tailwindCSS.lint.*` settings.
 
-It is an ESM-only TypeScript package targeting Node.js >= 18. The CLI is exposed
+It is an ESM-only TypeScript package targeting Node.js >= 22. The CLI is exposed
 as `tw-lint`.
 
 ## Commands
 
 ```sh
-npm run build       # bundle with tsup -> dist/ (cli.js, index.js, *.d.ts)
+npm run build       # bundle with tsdown -> dist/ (cli.js, index.js, *.d.ts)
 npm run dev         # run the CLI from source via tsx (src/cli.ts)
 npm run typecheck   # tsc --noEmit
 npm run check       # biome check . (lint + format + import sort, no writes)
@@ -55,8 +55,8 @@ detect a Tailwind project.
 - Rule names are exactly the `tailwindCSS.lint.*` keys; the canonical list lives
   in `RULES` in `src/types.ts`. Keep `README.md`'s rules table and any severity
   defaults in sync with the language service.
-- Build is bundled by `tsup` (see `tsup.config.ts`); the published package ships
-  only `dist/`.
+- Build is bundled by `tsdown` (see `tsdown.config.ts`); the published package
+  ships only `dist/`.
 - Linting and formatting are handled by [Biome](https://biomejs.dev/) (see
   `biome.json`): double quotes and semicolons. Run `npm run fix` before
   committing, and `npm run check` must pass. The intentionally-malformed

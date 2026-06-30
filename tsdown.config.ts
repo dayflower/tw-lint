@@ -1,12 +1,11 @@
-import { defineConfig } from "tsup";
+import { defineConfig } from "tsdown";
 
 export default defineConfig({
   entry: ["src/cli.ts", "src/index.ts"],
   format: ["esm"],
-  target: "node18",
+  target: "node22",
   platform: "node",
   dts: true,
   clean: true,
-  splitting: false,
   sourcemap: true,
 });

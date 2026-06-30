@@ -26,7 +26,7 @@ powered by the Tailwind CSS language tooling.
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 22
 - A Tailwind CSS project in the workspace:
   - **v3**: a `tailwind.config.{js,cjs,mjs,ts}` and `tailwindcss` installed in the
     project's `node_modules`.
