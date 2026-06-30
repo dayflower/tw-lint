@@ -6,10 +6,11 @@ import {
   createTailwindSettings,
   loadLinterConfig,
   runLint,
-} from "../src/index.js";
+} from "../../src/index.js";
 
 const fixtures = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
+  "..",
   "fixtures",
 );
 

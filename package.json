@@ -32,6 +32,7 @@
     "test:fixtures": "npm --prefix test/fixtures/v3 install --no-audit --no-fund && npm --prefix test/fixtures/v4 install --no-audit --no-fund",
     "pretest": "npm run test:fixtures",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
     "test:watch": "vitest"
   },
   "keywords": [

@@ -44,7 +44,7 @@ export function applyTextEdits(text: string, edits: TextEdit[]): string {
 }
 
 /** True when two ranges overlap or touch in a conflicting way. */
-function rangesOverlap(a: Range, b: Range): boolean {
+export function rangesOverlap(a: Range, b: Range): boolean {
   const beforeOrTouch =
     a.end.line < b.start.line ||
     (a.end.line === b.start.line && a.end.character <= b.start.character);

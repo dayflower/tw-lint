@@ -104,6 +104,6 @@ export function formatJson(summary: LintSummary): string {
   );
 }
 
-function plural(count: number, word: string): string {
+export function plural(count: number, word: string): string {
   return count === 1 ? word : `${word}s`;
 }
