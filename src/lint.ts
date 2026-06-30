@@ -1,6 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { glob } from "tinyglobby";
-import { TailwindLanguageClient } from "./client.js";
+import type {
+  CodeAction,
+  Command,
+  Diagnostic,
+} from "vscode-languageserver-protocol/node";
+import { TailwindLanguageClient, type ValidationResult } from "./client.js";
 import { applyTextEdits, collectFixEdits } from "./fix.js";
 import {
   DEFAULT_GLOBS,
@@ -13,6 +18,26 @@ import type { LintResult, LintSummary } from "./types.js";
 import { fileUri } from "./uri.js";
 
 export type FixMode = "none" | "apply" | "dry-run";
+
+/** A file selected for linting, with its resolved LSP language id. */
+export interface TargetFile {
+  filePath: string;
+  languageId: string;
+}
+
+/**
+ * The subset of the language client that per-document linting depends on.
+ * Declaring it as an interface lets `lintDocument` run against a mock client
+ * without spawning the real language server.
+ */
+export interface LintClient {
+  validate(filePath: string, text: string): Promise<ValidationResult>;
+  codeActions(
+    filePath: string,
+    text: string,
+    diagnostics: Diagnostic[],
+  ): Promise<(Command | CodeAction)[]>;
+}
 
 export interface RunLintOptions {
   /** Workspace root (absolute path). */
@@ -29,24 +54,88 @@ export interface RunLintOptions {
   projectTimeoutMs?: number;
 }
 
-export async function runLint(options: RunLintOptions): Promise<LintSummary> {
-  const { cwd, settings } = options;
-  const fix = options.fix ?? "none";
-  const patterns = options.patterns?.length ? options.patterns : DEFAULT_GLOBS;
-
+/**
+ * Discovers lintable files: globs `patterns` under `cwd`, keeps only those with
+ * a known language id, and returns them sorted by path. `ignore` is passed to
+ * the globber verbatim (callers compose it with the defaults).
+ */
+export async function collectTargetFiles(
+  cwd: string,
+  patterns: string[],
+  ignore: string[],
+): Promise<TargetFile[]> {
   const matched = await glob(patterns, {
     cwd,
     absolute: true,
     onlyFiles: true,
-    ignore: [...DEFAULT_IGNORE, ...(options.ignore ?? [])],
+    ignore,
   });
 
-  const files = matched
+  return matched
     .map((filePath) => ({ filePath, languageId: languageIdForFile(filePath) }))
-    .filter((entry): entry is { filePath: string; languageId: string } =>
-      Boolean(entry.languageId),
-    )
+    .filter((entry): entry is TargetFile => Boolean(entry.languageId))
     .sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
+/**
+ * Lints a single, already-opened document: validates it, optionally requests
+ * and applies quick-fixes, then re-validates the fixed text. Returns the result
+ * without touching the filesystem — when `fixMode` is "apply" the caller writes
+ * `output` back to disk. Re-validation runs against the in-memory fixed text,
+ * so it is independent of any such write.
+ */
+export async function lintDocument(
+  client: LintClient,
+  source: { filePath: string; text: string },
+  fixMode: FixMode,
+): Promise<LintResult> {
+  const { filePath, text } = source;
+  let timedOut = false;
+  const initial = await client.validate(filePath, text);
+  let diagnostics = initial.kind === "timeout" ? [] : initial.diagnostics;
+  if (initial.kind === "timeout") timedOut = true;
+  let fixCount = 0;
+  let output: string | undefined;
+
+  if (fixMode !== "none") {
+    const actions = await client.codeActions(filePath, text, diagnostics);
+    const edits = collectFixEdits(actions, fileUri(filePath));
+    if (edits.length > 0) {
+      const fixed = applyTextEdits(text, edits);
+      if (fixed !== text) {
+        fixCount = edits.length;
+        output = fixed;
+        // Re-lint the fixed content so remaining problems are reported.
+        const revalidated = await client.validate(filePath, fixed);
+        if (revalidated.kind === "timeout") {
+          timedOut = true;
+          diagnostics = [];
+        } else {
+          diagnostics = revalidated.diagnostics;
+        }
+      }
+    }
+  }
+
+  const messages = toLintMessages(diagnostics);
+  return {
+    filePath,
+    messages,
+    errorCount: messages.filter((m) => m.severity === "error").length,
+    warningCount: messages.filter((m) => m.severity === "warning").length,
+    ...(fixCount > 0 ? { fixCount } : {}),
+    ...(output !== undefined ? { output } : {}),
+    ...(timedOut ? { timedOut: true } : {}),
+  };
+}
+
+export async function runLint(options: RunLintOptions): Promise<LintSummary> {
+  const { cwd, settings } = options;
+  const fix = options.fix ?? "none";
+  const patterns = options.patterns?.length ? options.patterns : DEFAULT_GLOBS;
+  const ignore = [...DEFAULT_IGNORE, ...(options.ignore ?? [])];
+
+  const files = await collectTargetFiles(cwd, patterns, ignore);
 
   if (files.length === 0) {
     return summarize([], false);
@@ -94,53 +183,18 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
     for (const { filePath } of files) {
       const source = sources.get(filePath);
       if (!source) continue;
-      let timedOut = false;
-      const initial = await client.validate(filePath, source.text);
-      let diagnostics = initial.kind === "timeout" ? [] : initial.diagnostics;
-      if (initial.kind === "timeout") timedOut = true;
-      let fixCount = 0;
-      let output: string | undefined;
-
-      if (fix !== "none") {
-        const actions = await client.codeActions(
-          filePath,
-          source.text,
-          diagnostics,
-        );
-        const edits = collectFixEdits(actions, fileUri(filePath));
-        if (edits.length > 0) {
-          const fixed = applyTextEdits(source.text, edits);
-          if (fixed !== source.text) {
-            fixCount = edits.length;
-            output = fixed;
-            if (fix === "apply") {
-              await writeFile(filePath, fixed, "utf8");
-            }
-            // Re-lint the fixed content so remaining problems are reported.
-            const revalidated = await client.validate(filePath, fixed);
-            if (revalidated.kind === "timeout") {
-              timedOut = true;
-              diagnostics = [];
-            } else {
-              diagnostics = revalidated.diagnostics;
-            }
-          }
-        }
+      const result = await lintDocument(
+        client,
+        { filePath, text: source.text },
+        fix,
+      );
+      if (fix === "apply" && result.output !== undefined) {
+        await writeFile(filePath, result.output, "utf8");
       }
-
-      const messages = toLintMessages(diagnostics);
-      results.push({
-        filePath,
-        messages,
-        errorCount: messages.filter((m) => m.severity === "error").length,
-        warningCount: messages.filter((m) => m.severity === "warning").length,
-        ...(fixCount > 0 ? { fixCount } : {}),
-        ...(output !== undefined ? { output } : {}),
-        ...(timedOut ? { timedOut: true } : {}),
-      });
+      results.push(result);
     }
 
-    return summarize(results, !projectDetected);
+    return summarize(results, false);
   } finally {
     await client.dispose();
   }
