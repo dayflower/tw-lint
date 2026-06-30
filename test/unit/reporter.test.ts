@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Diagnostic } from "vscode-languageserver-protocol/node";
 import {
+  applyQuietFilter,
   formatJson,
   plural,
   summarize,
   toLintMessages,
 } from "../../src/reporter.js";
-import type { LintResult } from "../../src/types.js";
+import type { LintMessage, LintResult } from "../../src/types.js";
 
 function diagnostic(overrides: Partial<Diagnostic> = {}): Diagnostic {
   return {
@@ -116,6 +117,60 @@ describe("formatJson", () => {
     expect(json.results[0].fixCount).toBe(0);
     expect(json.results[0].messages).toHaveLength(1);
     expect(json.results[0].messages[0].rule).toBe("cssConflict");
+  });
+});
+
+describe("applyQuietFilter", () => {
+  function message(severity: "error" | "warning"): LintMessage {
+    return {
+      rule: "cssConflict",
+      severity,
+      message: "m",
+      line: 1,
+      column: 1,
+      endLine: 1,
+      endColumn: 2,
+    };
+  }
+
+  function summary() {
+    return summarize(
+      [
+        {
+          filePath: "a.html",
+          messages: [message("error"), message("warning")],
+          errorCount: 1,
+          warningCount: 1,
+          fixCount: 2,
+        },
+      ],
+      false,
+    );
+  }
+
+  it("drops warnings from output and zeroes warning counts", () => {
+    const filtered = applyQuietFilter(summary());
+    expect(filtered.warningCount).toBe(0);
+    expect(filtered.errorCount).toBe(1);
+    expect(filtered.results[0].warningCount).toBe(0);
+    expect(filtered.results[0].errorCount).toBe(1);
+    expect(filtered.results[0].messages).toHaveLength(1);
+    expect(filtered.results[0].messages[0].severity).toBe("error");
+  });
+
+  it("preserves fixCount and the noProjectDetected flag", () => {
+    const filtered = applyQuietFilter(summary());
+    expect(filtered.fixCount).toBe(2);
+    expect(filtered.results[0].fixCount).toBe(2);
+    expect(filtered.noProjectDetected).toBe(false);
+  });
+
+  it("does not mutate the original summary", () => {
+    const original = summary();
+    applyQuietFilter(original);
+    expect(original.warningCount).toBe(1);
+    expect(original.results[0].warningCount).toBe(1);
+    expect(original.results[0].messages).toHaveLength(2);
   });
 });
 

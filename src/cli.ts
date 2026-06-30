@@ -4,7 +4,7 @@ import process from "node:process";
 import { cac } from "cac";
 import { loadLinterConfig } from "./config.js";
 import { type FixMode, runLint } from "./lint.js";
-import { formatJson, formatText } from "./reporter.js";
+import { applyQuietFilter, formatJson, formatText } from "./reporter.js";
 import { createTailwindSettings, parseRuleOverride } from "./settings.js";
 import type { RuleName, RuleSeverity } from "./types.js";
 
@@ -89,28 +89,26 @@ async function main(): Promise<number> {
     verbose: options.verbose,
   });
 
-  if (options.quiet) {
-    for (const result of summary.results) {
-      result.messages = result.messages.filter((m) => m.severity === "error");
-      result.warningCount = 0;
-    }
-    summary.warningCount = 0;
-  }
+  // The exit code is computed from the unfiltered counts so that --quiet only
+  // suppresses output and never weakens the --max-warnings threshold.
+  const exitCode = resolveExitCode(
+    summary.errorCount,
+    summary.warningCount,
+    options.maxWarnings,
+  );
+
+  const reported = options.quiet ? applyQuietFilter(summary) : summary;
 
   if (format === "json") {
-    process.stdout.write(`${formatJson(summary)}\n`);
+    process.stdout.write(`${formatJson(reported)}\n`);
   } else {
-    const text = formatText(summary, cwd);
+    const text = formatText(reported, cwd);
     if (text.trim().length > 0) {
       process.stdout.write(`${text}\n`);
     }
   }
 
-  return resolveExitCode(
-    summary.errorCount,
-    summary.warningCount,
-    options.maxWarnings,
-  );
+  return exitCode;
 }
 
 function resolveExitCode(

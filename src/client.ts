@@ -26,6 +26,10 @@ import { fileUri, normalizeUri } from "./uri.js";
 
 const require = createRequire(import.meta.url);
 
+const { version: CLIENT_VERSION } = require("../package.json") as {
+  version: string;
+};
+
 function resolveServerEntry(): string {
   return require.resolve(
     "@tailwindcss/language-server/bin/tailwindcss-language-server",
@@ -132,7 +136,7 @@ export class TailwindLanguageClient {
     const rootUri = fileUri(this.options.cwd);
     await connection.sendRequest(InitializeRequest.type, {
       processId: process.pid,
-      clientInfo: { name: "tw-lint", version: "0.1.0" },
+      clientInfo: { name: "tw-lint", version: CLIENT_VERSION },
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: "workspace" }],
       capabilities: CLIENT_CAPABILITIES,

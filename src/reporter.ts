@@ -1,13 +1,18 @@
 import path from "node:path";
 import pc from "picocolors";
-import type { Diagnostic } from "vscode-languageserver-protocol/node";
+import {
+  type Diagnostic,
+  DiagnosticSeverity,
+} from "vscode-languageserver-protocol/node";
 import type { LintMessage, LintResult, LintSummary } from "./types.js";
 
 /** Converts LSP diagnostics to lint messages (1-based positions). */
 export function toLintMessages(diagnostics: Diagnostic[]): LintMessage[] {
   return diagnostics.map((diag) => ({
     rule: diag.code != null ? String(diag.code) : null,
-    severity: diag.severity === 1 ? "error" : "warning",
+    // Only Error maps to "error"; Warning/Information/Hint (and unset) collapse
+    // to "warning", mirroring how the linter surfaces diagnostics.
+    severity: diag.severity === DiagnosticSeverity.Error ? "error" : "warning",
     message:
       typeof diag.message === "string" ? diag.message : String(diag.message),
     line: diag.range.start.line + 1,
@@ -30,6 +35,20 @@ export function summarize(
     fixCount += result.fixCount ?? 0;
   }
   return { results, errorCount, warningCount, fixCount, noProjectDetected };
+}
+
+/**
+ * Returns a copy of the summary with warnings removed, for `--quiet` output.
+ * Non-destructive: the original summary and its results are left untouched, so
+ * callers can still compute exit codes from the unfiltered counts.
+ */
+export function applyQuietFilter(summary: LintSummary): LintSummary {
+  const results = summary.results.map((result) => ({
+    ...result,
+    messages: result.messages.filter((m) => m.severity === "error"),
+    warningCount: 0,
+  }));
+  return { ...summary, results, warningCount: 0 };
 }
 
 export function formatText(summary: LintSummary, cwd: string): string {
