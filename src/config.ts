@@ -2,7 +2,14 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { SettingsOverrides } from "./settings.js";
-import { RULES, type RuleName, type RuleSeverity } from "./types.js";
+import {
+  invalidSeverityMessage,
+  isRuleName,
+  isRuleSeverity,
+  type RuleName,
+  type RuleSeverity,
+  unknownRuleMessage,
+} from "./types.js";
 
 /** Config file names searched (in order) when `--config` is not given. */
 export const DEFAULT_CONFIG_FILES = ["tw-lint.config.json", ".tw-lintrc.json"];
@@ -143,22 +150,13 @@ function parseRules(
   }
   const result: Partial<Record<RuleName, RuleSeverity>> = {};
   for (const [rule, severity] of Object.entries(value)) {
-    if (!(RULES as readonly string[]).includes(rule)) {
-      throw new Error(
-        `Unknown rule "${rule}" in ${source}. Known rules: ${RULES.join(", ")}.`,
-      );
+    if (!isRuleName(rule)) {
+      throw new Error(unknownRuleMessage(rule, source));
     }
-    if (
-      severity !== "ignore" &&
-      severity !== "warning" &&
-      severity !== "error"
-    ) {
-      throw new Error(
-        `Invalid severity "${String(severity)}" for rule "${rule}" in ${source}. ` +
-          "Expected ignore|warning|error.",
-      );
+    if (!isRuleSeverity(severity)) {
+      throw new Error(invalidSeverityMessage(rule, severity, source));
     }
-    result[rule as RuleName] = severity;
+    result[rule] = severity;
   }
   return result;
 }

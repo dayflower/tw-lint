@@ -1,4 +1,11 @@
-import { RULES, type RuleName, type RuleSeverity } from "./types.js";
+import {
+  invalidSeverityMessage,
+  isRuleName,
+  isRuleSeverity,
+  type RuleName,
+  type RuleSeverity,
+  unknownRuleMessage,
+} from "./types.js";
 
 /** Subset of `tailwindCSS.*` settings relevant to linting. */
 export interface TailwindCssSettings {
@@ -96,15 +103,11 @@ export function parseRuleOverride(input: string): [RuleName, RuleSeverity] {
       `Invalid --severity value "${input}". Expected "rule=ignore|warning|error".`,
     );
   }
-  if (!(RULES as readonly string[]).includes(rule)) {
-    throw new Error(
-      `Unknown rule "${rule}". Known rules: ${RULES.join(", ")}.`,
-    );
+  if (!isRuleName(rule)) {
+    throw new Error(unknownRuleMessage(rule));
   }
-  if (severity !== "ignore" && severity !== "warning" && severity !== "error") {
-    throw new Error(
-      `Invalid severity "${severity}" for rule "${rule}". Expected ignore|warning|error.`,
-    );
+  if (!isRuleSeverity(severity)) {
+    throw new Error(invalidSeverityMessage(rule, severity));
   }
-  return [rule as RuleName, severity];
+  return [rule, severity];
 }
