@@ -89,6 +89,12 @@ const CLIENT_CAPABILITIES: ClientCapabilities = {
       dataSupport: true,
     },
   },
+  // Opt into the `@/tailwindCSS/projectDetails` notification the server emits
+  // once per discovered project. Combined with `@/tailwindCSS/serverReady`
+  // (sent after the workspace scan completes) this lets us detect "no Tailwind
+  // project" as soon as the scan finishes, instead of waiting for the project
+  // initialization timeout.
+  experimental: { tailwind: { projectDetails: true } },
 };
 
 /**
@@ -117,6 +123,12 @@ export class TailwindLanguageClient {
   private projectInitialized = false;
   private projectResolve: (() => void) | undefined;
   private projectReject: ((error: Error) => void) | undefined;
+  private projectGiveUp: (() => void) | undefined;
+
+  /** True once the server has finished its initial workspace scan. */
+  private serverReady = false;
+  /** Number of Tailwind projects the server discovered during that scan. */
+  private projectDetailsCount = 0;
 
   /** Set when the connection errors or closes unexpectedly. */
   private serverError: Error | undefined;
@@ -191,6 +203,12 @@ export class TailwindLanguageClient {
     connection.onNotification("@/tailwindCSS/projectReloaded", () =>
       this.markProjectInitialized(),
     );
+    connection.onNotification("@/tailwindCSS/projectDetails", () => {
+      this.projectDetailsCount += 1;
+    });
+    connection.onNotification("@/tailwindCSS/serverReady", () =>
+      this.markServerReady(),
+    );
 
     connection.onNotification(
       "window/logMessage",
@@ -236,8 +254,23 @@ export class TailwindLanguageClient {
 
   private markProjectInitialized(): void {
     this.projectInitialized = true;
-    this.projectReject = undefined;
     this.projectResolve?.();
+  }
+
+  /**
+   * Records that the workspace scan finished. If it discovered no Tailwind
+   * project, `projectInitialized` will never fire, so unblock any pending
+   * `waitForProject` immediately instead of letting it time out.
+   */
+  private markServerReady(): void {
+    this.serverReady = true;
+    if (this.projectDetailsCount === 0) this.projectGiveUp?.();
+  }
+
+  private clearProjectWaiter(): void {
+    this.projectResolve = undefined;
+    this.projectReject = undefined;
+    this.projectGiveUp = undefined;
   }
 
   /** Opens a document (version 1). Does not wait for diagnostics. */
@@ -262,21 +295,28 @@ export class TailwindLanguageClient {
   async waitForProject(): Promise<boolean> {
     if (this.serverError) throw this.serverError;
     if (this.projectInitialized) return true;
+    // The scan already finished and found nothing: no project will initialize.
+    if (this.serverReady && this.projectDetailsCount === 0) return false;
     const timeout = this.options.projectTimeoutMs ?? 20_000;
     return new Promise<boolean>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.projectReject = undefined;
+        this.clearProjectWaiter();
         resolve(this.projectInitialized);
       }, timeout);
       this.projectResolve = () => {
         clearTimeout(timer);
-        this.projectReject = undefined;
+        this.clearProjectWaiter();
         resolve(true);
       };
       this.projectReject = (error) => {
         clearTimeout(timer);
-        this.projectResolve = undefined;
+        this.clearProjectWaiter();
         reject(error);
+      };
+      this.projectGiveUp = () => {
+        clearTimeout(timer);
+        this.clearProjectWaiter();
+        resolve(false);
       };
     });
   }
