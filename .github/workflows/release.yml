@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  # id-token: OIDC for npm Trusted Publishing (provenance).
+  # contents: create the release tag and GitHub Release.
+  id-token: write
+  contents: write
+
+# Never cancel an in-flight release; publishing must not be interrupted.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch all tags so the "already released?" guard can see them.
+          fetch-depth: 0
+
+      # Release only when package.json declares a version that has no matching
+      # tag yet (i.e. a release PR was just merged). Ordinary commits keep the
+      # same version, so their tag already exists and this becomes a no-op.
+      - id: guard
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "Tag v$version already exists; nothing to release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version v$version detected; releasing."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.should_release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            test/fixtures/v3/package-lock.json
+            test/fixtures/v4/package-lock.json
+
+      # Trusted Publishing (OIDC) requires npm >= 11.5.1; Node 22 ships npm 10.x.
+      - if: steps.guard.outputs.should_release == 'true'
+        run: npm install -g npm@latest
+
+      - if: steps.guard.outputs.should_release == 'true'
+        run: npm ci
+
+      # Only publish when the tests pass.
+      - if: steps.guard.outputs.should_release == 'true'
+        run: npm test
+
+      # `prepublishOnly` runs check + typecheck + build, so we do not repeat the
+      # build here. OIDC Trusted Publishing attaches provenance automatically.
+      - if: steps.guard.outputs.should_release == 'true'
+        run: npm publish
+
+      # Tag and create the GitHub Release only after a successful publish, so a
+      # tag never implies a release that did not actually publish.
+      - if: steps.guard.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.guard.outputs.version }}"
+          git tag "v$version"
+          git push origin "v$version"
+          gh release create "v$version" \
+            --title "v$version" \
+            --generate-notes
