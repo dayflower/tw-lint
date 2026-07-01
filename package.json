@@ -1,6 +1,6 @@
 {
   "name": "@dayflower/tw-lint",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "An unofficial Tailwind CSS linter CLI powered by the Tailwind CSS language server.",
   "type": "module",
   "bin": {
