@@ -90,6 +90,7 @@ tw-lint "src/**/*.html" --fix
 | `--quiet` | Report errors only. |
 | `--fix` | Apply fixes and write changes to files. |
 | `--fix-dry-run` | Compute fixes without writing changes. |
+| `--no-error-on-no-project` | Exit `0` instead of `2` when no Tailwind project is detected. |
 | `--verbose` | Print language server logs to stderr. |
 
 ### Configuration file
@@ -157,7 +158,9 @@ keys under `tailwindCSS.lint`.
 
 - `0` — no errors (and warnings within `--max-warnings`, if set).
 - `1` — errors found, or `--max-warnings` exceeded.
-- `2` — the linter itself failed.
+- `2` — the linter itself failed, or no Tailwind project was detected for the
+  linted files (nothing was linted). Pass `--no-error-on-no-project` to treat
+  the latter as `0` instead.
 
 ## Programmatic API
 

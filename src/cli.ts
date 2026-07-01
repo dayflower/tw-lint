@@ -18,6 +18,7 @@ interface CliOptions {
   quiet?: boolean;
   fix?: boolean;
   fixDryRun?: boolean;
+  errorOnNoProject?: boolean;
   verbose?: boolean;
 }
 
@@ -45,6 +46,10 @@ async function main(): Promise<number> {
     .option("--quiet", "Report errors only")
     .option("--fix", "Automatically fix problems and write changes to files")
     .option("--fix-dry-run", "Compute fixes without writing changes to files")
+    .option(
+      "--no-error-on-no-project",
+      "Exit 0 (instead of 2) when no Tailwind project is detected",
+    )
     .option("--verbose", "Print language server diagnostics to stderr");
 
   cli.help();
@@ -109,6 +114,17 @@ async function main(): Promise<number> {
     process.stderr.write(
       `tw-lint: timed out waiting for diagnostics: ${files}. ` +
         "Results may be incomplete.\n",
+    );
+    exitCode = 2;
+  }
+
+  // No detected project means nothing was actually linted. Unless the user
+  // opted out, treat it as an operational failure (exit 2) so a misconfigured
+  // setup can't pass silently in CI.
+  if (summary.noProjectDetected && options.errorOnNoProject !== false) {
+    process.stderr.write(
+      "tw-lint: no Tailwind CSS project was detected for the linted files. " +
+        "Nothing was linted.\n",
     );
     exitCode = 2;
   }
