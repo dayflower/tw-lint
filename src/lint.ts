@@ -31,12 +31,15 @@ export interface TargetFile {
  * without spawning the real language server.
  */
 export interface LintClient {
-  validate(filePath: string, text: string): Promise<ValidationResult>;
+  /** Diagnostics the server published for the already-opened document. */
+  diagnostics(filePath: string): Promise<ValidationResult>;
   codeActions(
     filePath: string,
     text: string,
     diagnostics: Diagnostic[],
   ): Promise<(Command | CodeAction)[]>;
+  /** Re-validate the document after applying fixes (sends a `didChange`). */
+  validate(filePath: string, text: string): Promise<ValidationResult>;
 }
 
 export interface RunLintOptions {
@@ -78,11 +81,11 @@ export async function collectTargetFiles(
 }
 
 /**
- * Lints a single, already-opened document: validates it, optionally requests
- * and applies quick-fixes, then re-validates the fixed text. Returns the result
- * without touching the filesystem — when `fixMode` is "apply" the caller writes
- * `output` back to disk. Re-validation runs against the in-memory fixed text,
- * so it is independent of any such write.
+ * Lints a single, already-opened document: reads its published diagnostics,
+ * optionally requests and applies quick-fixes, then re-validates the fixed text.
+ * Returns the result without touching the filesystem — when `fixMode` is "apply"
+ * the caller writes `output` back to disk. Re-validation runs against the
+ * in-memory fixed text, so it is independent of any such write.
  */
 export async function lintDocument(
   client: LintClient,
@@ -91,7 +94,7 @@ export async function lintDocument(
 ): Promise<LintResult> {
   const { filePath, text } = source;
   let timedOut = false;
-  const initial = await client.validate(filePath, text);
+  const initial = await client.diagnostics(filePath);
   let diagnostics = initial.kind === "timeout" ? [] : initial.diagnostics;
   if (initial.kind === "timeout") timedOut = true;
   let fixCount = 0;
@@ -179,7 +182,8 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
       return summarize(results, true);
     }
 
-    // Phase 2: force a fresh validation per document and collect diagnostics.
+    // Phase 2: collect the diagnostics published for each opened document (and
+    // re-validate after any fixes).
     for (const { filePath } of files) {
       const source = sources.get(filePath);
       if (!source) continue;

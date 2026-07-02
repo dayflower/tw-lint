@@ -47,6 +47,8 @@ export type ValidationResult =
   | { kind: "timeout" };
 
 interface PublishWaiter {
+  /** Resolve once this many diagnostics have been published for the document. */
+  target: number;
   resolve: () => void;
   reject: (error: Error) => void;
 }
@@ -108,22 +110,32 @@ const CLIENT_CAPABILITIES: ClientCapabilities = {
  * detection (v3/v4), config loading and the actual validation are all performed
  * by the server, which uses `@tailwindcss/language-service` internally.
  *
- * Readiness handling: the server emits diagnostics asynchronously and the
- * `documentReady` notification it sends in test mode is not a reliable signal
- * (it can fire before the first diagnostics are published). Instead we open all
+ * Readiness handling: the server emits diagnostics asynchronously. We open all
  * documents to trigger project initialization, wait for the
- * `@/tailwindCSS/projectInitialized` notification, and then force a fresh,
- * deterministic validation per document via `textDocument/didChange` — with the
- * test-mode debounce disabled, the matching `publishDiagnostics` arrives almost
+ * `@/tailwindCSS/projectInitialized` notification, and then read the
+ * diagnostics the server publishes for each `didOpen`. `--fix` additionally
+ * re-validates the fixed text via `textDocument/didChange` — with the test-mode
+ * debounce disabled, the matching `publishDiagnostics` arrives almost
  * immediately afterwards.
+ *
+ * Publish correlation: `publishDiagnostics` carries no document version, and the
+ * server publishes once per notification (the `didOpen` plus every `didChange`),
+ * so a document accumulates one publish per notification we send. We therefore
+ * key each read on the *cumulative* publish count for the URI (via `versions`,
+ * which counts notifications) rather than "the next publish". This prevents an
+ * earlier, still-in-flight publish (e.g. the one triggered by `didOpen`) from
+ * resolving the post-fix re-validation with stale diagnostics — which is what
+ * made `--fix` report a warning for an issue it had already fixed.
  */
 export class TailwindLanguageClient {
   private child: ChildProcessWithoutNullStreams | undefined;
   private connection: ProtocolConnection | undefined;
 
-  private readonly diagnostics = new Map<string, Diagnostic[]>();
+  private readonly publishedDiagnostics = new Map<string, Diagnostic[]>();
   private readonly publishWaiters = new Map<string, PublishWaiter>();
   private readonly versions = new Map<string, number>();
+  /** Number of `publishDiagnostics` notifications received per document URI. */
+  private readonly publishCounts = new Map<string, number>();
 
   private projectInitialized = false;
   private projectResolve: (() => void) | undefined;
@@ -144,6 +156,17 @@ export class TailwindLanguageClient {
 
   get hasDetectedProject(): boolean {
     return this.projectInitialized;
+  }
+
+  /**
+   * Test seam: wires the notification/request handlers onto a caller-supplied
+   * connection instead of spawning a language server, so the publish-count
+   * correlation in {@link validate} can be exercised deterministically. Not used
+   * in production, where {@link start} owns the real connection.
+   */
+  attachConnectionForTesting(connection: ProtocolConnection): void {
+    this.connection = connection;
+    this.registerHandlers(connection);
   }
 
   async start(): Promise<void> {
@@ -194,9 +217,11 @@ export class TailwindLanguageClient {
 
     connection.onNotification(PublishDiagnosticsNotification.type, (params) => {
       const key = normalizeUri(params.uri);
-      this.diagnostics.set(key, params.diagnostics);
+      this.publishedDiagnostics.set(key, params.diagnostics);
+      const count = (this.publishCounts.get(key) ?? 0) + 1;
+      this.publishCounts.set(key, count);
       const waiter = this.publishWaiters.get(key);
-      if (waiter) {
+      if (waiter && count >= waiter.target) {
         this.publishWaiters.delete(key);
         waiter.resolve();
       }
@@ -327,19 +352,51 @@ export class TailwindLanguageClient {
   }
 
   /**
-   * Forces a fresh validation of an already-opened document by sending a
-   * `didChange` with the given text, and resolves with the resulting
-   * diagnostics once they are published.
+   * Resolves with the diagnostics the server publishes for an already-opened
+   * document in response to `didOpen`. The server publishes exactly once per
+   * opened document — including an empty list for a clean file — so we simply
+   * wait for that first publish rather than forcing a redundant `didChange`
+   * (which, carrying the same text as the open, coalesces with it and yields an
+   * unpredictable number of publishes).
+   */
+  async diagnostics(filePath: string): Promise<ValidationResult> {
+    if (this.serverError) throw this.serverError;
+    const key = fileUri(filePath);
+    // `versions` is 1 immediately after `open`, so the initial diagnostics are
+    // the 1st cumulative publish for this URI.
+    const outcome = await this.waitForPublishCount(
+      key,
+      this.versions.get(key) ?? 1,
+    );
+    if (outcome === "timeout") return { kind: "timeout" };
+    return {
+      kind: "diagnostics",
+      diagnostics: this.publishedDiagnostics.get(key) ?? [],
+    };
+  }
+
+  /**
+   * Re-validates an already-opened document by sending a `didChange` with the
+   * given (fixed) text, and resolves with the resulting diagnostics once they
+   * are published. Used after `--fix` applies edits, so `text` differs from the
+   * opened text and its publish is a fresh one that cannot coalesce with the
+   * open.
    */
   async validate(filePath: string, text: string): Promise<ValidationResult> {
     if (this.serverError) throw this.serverError;
     const connection = this.requireConnection();
     const uri = fileUri(filePath);
     const key = uri;
+    // `versions` counts the notifications sent for this document (`didOpen` = 1,
+    // then one per `didChange`). Since the server publishes exactly once per
+    // notification, the publish that reflects this `didChange` is the
+    // `version`-th publish for the URI. Waiting for that specific count — rather
+    // than merely the next publish — skips any earlier publish still in flight
+    // (e.g. the one triggered by `didOpen`).
     const version = (this.versions.get(key) ?? 1) + 1;
     this.versions.set(key, version);
 
-    const published = this.waitForNextPublish(key);
+    const published = this.waitForPublishCount(key, version);
     await connection.sendNotification(DidChangeTextDocumentNotification.type, {
       textDocument: { uri, version },
       contentChanges: [{ text }],
@@ -348,19 +405,28 @@ export class TailwindLanguageClient {
     if (outcome === "timeout") return { kind: "timeout" };
     return {
       kind: "diagnostics",
-      diagnostics: this.diagnostics.get(key) ?? [],
+      diagnostics: this.publishedDiagnostics.get(key) ?? [],
     };
   }
 
   /**
-   * Resolves with "published" when the matching diagnostics arrive, or
-   * "timeout" if none do within the window. Rejects if the connection fails.
+   * Resolves with "published" once at least `target` diagnostics have been
+   * published for `key` (resolving immediately if that already holds), or
+   * "timeout" if the count is not reached within the window. Rejects if the
+   * connection fails.
    */
-  private waitForNextPublish(key: string): Promise<"published" | "timeout"> {
+  private waitForPublishCount(
+    key: string,
+    target: number,
+  ): Promise<"published" | "timeout"> {
     const timeout = this.options.documentTimeoutMs ?? 15_000;
     return new Promise<"published" | "timeout">((resolve, reject) => {
       if (this.serverError) {
         reject(this.serverError);
+        return;
+      }
+      if ((this.publishCounts.get(key) ?? 0) >= target) {
+        resolve("published");
         return;
       }
       const timer = setTimeout(() => {
@@ -368,6 +434,7 @@ export class TailwindLanguageClient {
         resolve("timeout");
       }, timeout);
       this.publishWaiters.set(key, {
+        target,
         resolve: () => {
           clearTimeout(timer);
           resolve("published");
