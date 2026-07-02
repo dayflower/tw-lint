@@ -17,11 +17,17 @@ export {
 } from "./languages.js";
 export { type FixMode, type RunLintOptions, runLint } from "./lint.js";
 export {
+  formatGithub,
   formatJson,
   formatText,
   summarize,
   toLintMessages,
 } from "./reporter.js";
+export {
+  type RunCliOptions,
+  type RunCliResult,
+  runCli,
+} from "./run.js";
 export {
   createEditorSettings,
   createTailwindSettings,

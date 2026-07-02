@@ -20,7 +20,8 @@ powered by the Tailwind CSS language tooling.
   projects — the version is auto-detected by the language server.
 - Lints HTML, JSX/TSX, Vue, Svelte, Astro, PHP and other template languages,
   as well as CSS files.
-- Human-readable text output and machine-readable `--format json`.
+- Human-readable text output, machine-readable `--format json`, and
+  `--format github` for GitHub Actions annotations.
 - `--fix` / `--fix-dry-run` apply the language server's quick-fixes.
 - CI-friendly exit codes and `--max-warnings`.
 
@@ -82,7 +83,7 @@ tw-lint "src/**/*.html" --fix
 | Option | Description |
 | --- | --- |
 | `--cwd <dir>` | Project root directory (default: current directory). |
-| `--format <text\|json>` | Output format (default: `text`). |
+| `--format <text\|json\|github>` | Output format (default: `text`). `github` emits GitHub Actions annotations. |
 | `-c, --config <file>` | Path to a linter config file (see below). |
 | `--severity <rule=level>` | Override a rule severity (`ignore`/`warning`/`error`). Repeatable. Overrides the config file. |
 | `--tailwind-config <file>` | Force a specific Tailwind config file. |
@@ -161,6 +162,53 @@ keys under `tailwindCSS.lint`.
 - `2` — the linter itself failed, or no Tailwind project was detected for the
   linted files (nothing was linted). Pass `--no-error-on-no-project` to treat
   the latter as `0` instead.
+
+## GitHub Action
+
+`tw-lint` ships as a reusable GitHub Action. It reports problems as inline
+annotations on the run and pull request. As with the CLI, **install the target
+project's dependencies first** so the language server can detect the project.
+
+```yaml
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci # install the project's own tailwindcss
+      - uses: dayflower/tw-lint@v1
+        with:
+          globs: "src/**/*.{tsx,html}"
+          max-warnings: "0"
+```
+
+### Inputs
+
+Each input maps to the matching CLI option:
+
+| Input                 | CLI option                | Default |
+| --------------------- | ------------------------- | ------- |
+| `globs`               | positional globs          | (none)  |
+| `working-directory`   | `--cwd`                   | `.`     |
+| `config`              | `--config`                | (none)  |
+| `severity`            | `--severity` (one per line) | (none) |
+| `tailwind-config`     | `--tailwind-config`       | (none)  |
+| `max-warnings`        | `--max-warnings`          | (none)  |
+| `quiet`               | `--quiet`                 | `false` |
+| `fix`                 | `--fix`                   | `false` |
+| `fix-dry-run`         | `--fix-dry-run`           | `false` |
+| `error-on-no-project` | `--no-error-on-no-project` (inverted) | `true` |
+| `verbose`             | `--verbose`               | `false` |
+
+### Outputs
+
+`error-count`, `warning-count`, and `fix-count`.
+
+The `github` output format is also available from the CLI directly via
+`tw-lint --format github` if you prefer to run the binary yourself in a workflow.
 
 ## Programmatic API
 

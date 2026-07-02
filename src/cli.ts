@@ -3,8 +3,14 @@ import path from "node:path";
 import process from "node:process";
 import { cac } from "cac";
 import { loadLinterConfig } from "./config.js";
-import { type FixMode, runLint } from "./lint.js";
-import { applyQuietFilter, formatJson, formatText } from "./reporter.js";
+import type { FixMode } from "./lint.js";
+import {
+  applyQuietFilter,
+  formatGithub,
+  formatJson,
+  formatText,
+} from "./reporter.js";
+import { runCli } from "./run.js";
 import { createTailwindSettings, parseRuleOverride } from "./settings.js";
 import type { RuleName, RuleSeverity } from "./types.js";
 
@@ -33,7 +39,7 @@ async function main(): Promise<number> {
   cli
     .command("[...globs]", "Lint files for Tailwind CSS problems")
     .option("--cwd <dir>", "Project root directory", { default: process.cwd() })
-    .option("--format <format>", "Output format: text | json", {
+    .option("--format <format>", "Output format: text | json | github", {
       default: "text",
     })
     .option("-c, --config <file>", "Path to a linter config file (JSON)")
@@ -63,7 +69,12 @@ async function main(): Promise<number> {
   const globs = parsed.args as string[];
   const options = parsed.options as CliOptions;
 
-  const format = options.format === "json" ? "json" : "text";
+  const format =
+    options.format === "json"
+      ? "json"
+      : options.format === "github"
+        ? "github"
+        : "text";
   const cwd = path.resolve(options.cwd ?? process.cwd());
 
   // Config file provides the base; CLI flags override it.
@@ -86,53 +97,29 @@ async function main(): Promise<number> {
       ? "apply"
       : "none";
 
-  const summary = await runLint({
+  const { summary, exitCode, notes } = await runCli({
     cwd,
-    patterns: globs,
+    globs,
     settings,
     fix,
     verbose: options.verbose,
+    maxWarnings: options.maxWarnings,
+    errorOnNoProject: options.errorOnNoProject,
   });
 
-  // The exit code is computed from the unfiltered counts so that --quiet only
-  // suppresses output and never weakens the --max-warnings threshold.
-  let exitCode = resolveExitCode(
-    summary.errorCount,
-    summary.warningCount,
-    options.maxWarnings,
-  );
-
-  // A timeout means the language server never reported diagnostics for one or
-  // more files, so the results are incomplete. Treat that as an operational
-  // failure (exit 2) that takes precedence over the lint-based exit codes,
-  // rather than silently reporting those files as problem-free.
-  if (summary.timedOutCount > 0) {
-    const files = summary.results
-      .filter((result) => result.timedOut)
-      .map((result) => path.relative(cwd, result.filePath) || result.filePath)
-      .join(", ");
-    process.stderr.write(
-      `tw-lint: timed out waiting for diagnostics: ${files}. ` +
-        "Results may be incomplete.\n",
-    );
-    exitCode = 2;
-  }
-
-  // No detected project means nothing was actually linted. Unless the user
-  // opted out, treat it as an operational failure (exit 2) so a misconfigured
-  // setup can't pass silently in CI.
-  if (summary.noProjectDetected && options.errorOnNoProject !== false) {
-    process.stderr.write(
-      "tw-lint: no Tailwind CSS project was detected for the linted files. " +
-        "Nothing was linted.\n",
-    );
-    exitCode = 2;
+  for (const note of notes) {
+    process.stderr.write(`tw-lint: ${note}\n`);
   }
 
   const reported = options.quiet ? applyQuietFilter(summary) : summary;
 
   if (format === "json") {
     process.stdout.write(`${formatJson(reported)}\n`);
+  } else if (format === "github") {
+    const text = formatGithub(reported, cwd);
+    if (text.length > 0) {
+      process.stdout.write(`${text}\n`);
+    }
   } else {
     const text = formatText(reported, cwd);
     if (text.trim().length > 0) {
@@ -141,19 +128,6 @@ async function main(): Promise<number> {
   }
 
   return exitCode;
-}
-
-function resolveExitCode(
-  errorCount: number,
-  warningCount: number,
-  maxWarnings: string | number | undefined,
-): number {
-  if (errorCount > 0) return 1;
-  if (maxWarnings !== undefined) {
-    const limit = Number(maxWarnings);
-    if (Number.isFinite(limit) && warningCount > limit) return 1;
-  }
-  return 0;
 }
 
 main()

@@ -34,6 +34,9 @@ jobs:
 
       - run: npm run build
 
+      # Ensure the GitHub Action bundle + vendored language server still build.
+      - run: npm run build:action
+
       # `pretest` installs the fixtures' tailwindcss deps, then runs the
       # unit + integration vitest projects.
       - run: npm test

@@ -31,6 +31,11 @@ const { version: CLIENT_VERSION } = require("../package.json") as {
 };
 
 function resolveServerEntry(): string {
+  // Allow the entry to be pinned explicitly (e.g. the GitHub Action bundles a
+  // vendored copy of the language server that is not reachable via the usual
+  // node_modules resolution from the bundled file).
+  const override = process.env.TW_LINT_LANGUAGE_SERVER_ENTRY;
+  if (override) return override;
   return require.resolve(
     "@tailwindcss/language-server/bin/tailwindcss-language-server",
   );

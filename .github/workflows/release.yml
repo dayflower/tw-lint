@@ -66,15 +66,30 @@ jobs:
       - if: steps.guard.outputs.should_release == 'true'
         run: npm publish
 
+      # Build the committed GitHub Action bundle (app bundle + vendored language
+      # server). It is force-added into a release commit that only the tags point
+      # at, so `main` never carries the generated artifact.
+      - if: steps.guard.outputs.should_release == 'true'
+        run: npm run build:action
+
       # Tag and create the GitHub Release only after a successful publish, so a
-      # tag never implies a release that did not actually publish.
+      # tag never implies a release that did not actually publish. The `v<major>`
+      # tag is moved to the same commit so `uses: dayflower/tw-lint@v1` tracks the
+      # latest release.
       - if: steps.guard.outputs.should_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${{ steps.guard.outputs.version }}"
+          major="${version%%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f action
+          git commit -m "chore: build action bundle for v$version"
           git tag "v$version"
           git push origin "v$version"
+          git tag -f "v$major"
+          git push -f origin "v$major"
           gh release create "v$version" \
             --title "v$version" \
             --generate-notes
