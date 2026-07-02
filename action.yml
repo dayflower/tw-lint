@@ -1,0 +1,71 @@
+name: tw-lint
+description: >-
+  Lint Tailwind CSS class usage via the Tailwind CSS language server, with inline
+  annotations on the run and pull request.
+author: dayflower
+branding:
+  icon: wind
+  color: blue
+
+inputs:
+  globs:
+    description: >-
+      Whitespace- or newline-separated glob patterns to lint. Leave empty to use
+      the built-in defaults.
+    required: false
+    default: ""
+  working-directory:
+    description: Project root directory to lint from (CLI `--cwd`).
+    required: false
+    default: "."
+  config:
+    description: Path to a linter config file (JSON).
+    required: false
+    default: ""
+  severity:
+    description: >-
+      Newline-separated `rule=level` overrides (e.g. `cssConflict=error`).
+    required: false
+    default: ""
+  tailwind-config:
+    description: Force a specific Tailwind config file.
+    required: false
+    default: ""
+  max-warnings:
+    description: Number of warnings that triggers a failing run.
+    required: false
+    default: ""
+  quiet:
+    description: Report errors only.
+    required: false
+    default: "false"
+  fix:
+    description: Automatically fix problems and write changes to files.
+    required: false
+    default: "false"
+  fix-dry-run:
+    description: Compute fixes without writing changes to files.
+    required: false
+    default: "false"
+  error-on-no-project:
+    description: >-
+      Fail the run when no Tailwind project is detected. Set to `false` to treat
+      it as success.
+    required: false
+    default: "true"
+  verbose:
+    description: Print language server diagnostics to the log.
+    required: false
+    default: "false"
+
+outputs:
+  error-count:
+    description: Total number of errors found.
+  warning-count:
+    description: Total number of warnings found.
+  fix-count:
+    description: Total number of fixes applied.
+
+runs:
+  using: "node24"
+  main: "action/index.mjs"

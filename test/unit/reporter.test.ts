@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Diagnostic } from "vscode-languageserver-protocol/node";
 import {
   applyQuietFilter,
+  formatGithub,
   formatJson,
   plural,
   summarize,
@@ -171,6 +172,78 @@ describe("applyQuietFilter", () => {
     expect(original.warningCount).toBe(1);
     expect(original.results[0].warningCount).toBe(1);
     expect(original.results[0].messages).toHaveLength(2);
+  });
+});
+
+describe("formatGithub", () => {
+  const original = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    process.env.GITHUB_WORKSPACE = "/repo";
+  });
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.GITHUB_WORKSPACE;
+    else process.env.GITHUB_WORKSPACE = original;
+  });
+
+  function message(overrides: Partial<LintMessage> = {}): LintMessage {
+    return {
+      rule: "cssConflict",
+      severity: "warning",
+      message: "m",
+      line: 4,
+      column: 17,
+      endLine: 4,
+      endColumn: 20,
+      ...overrides,
+    };
+  }
+
+  it("emits one workflow command per message, relative to GITHUB_WORKSPACE", () => {
+    const summary = summarize(
+      [
+        {
+          filePath: "/repo/src/index.html",
+          messages: [
+            message({ severity: "error", message: "bad" }),
+            message({ severity: "warning", rule: null, message: "meh" }),
+          ],
+          errorCount: 1,
+          warningCount: 1,
+        },
+      ],
+      false,
+    );
+    const lines = formatGithub(summary, "/somewhere/else").split("\n");
+    expect(lines[0]).toBe(
+      "::error file=src/index.html,line=4,endLine=4,col=17,endColumn=20::[cssConflict] bad",
+    );
+    // A null rule omits the "[rule] " prefix.
+    expect(lines[1]).toBe(
+      "::warning file=src/index.html,line=4,endLine=4,col=17,endColumn=20::meh",
+    );
+  });
+
+  it("escapes newlines in the message and special chars in the path", () => {
+    const summary = summarize(
+      [
+        {
+          filePath: "/repo/a,b:c.html",
+          messages: [message({ rule: null, message: "line1\nline2" })],
+          errorCount: 0,
+          warningCount: 1,
+        },
+      ],
+      false,
+    );
+    const line = formatGithub(summary, "/repo");
+    expect(line).toContain("file=a%2Cb%3Ac.html");
+    expect(line).toContain("::line1%0Aline2");
+  });
+
+  it("returns an empty string when there are no messages", () => {
+    expect(formatGithub(summarize([], false), "/repo")).toBe("");
   });
 });
 

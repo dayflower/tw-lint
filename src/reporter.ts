@@ -112,6 +112,50 @@ function formatMessageLine(message: LintMessage): string {
   return `  ${position}  ${severity}  ${message.message}  ${rule}`.trimEnd();
 }
 
+/**
+ * Escapes a value for use in a GitHub workflow command message (the part after
+ * `::`). See https://docs.github.com/actions/reference/workflow-commands.
+ */
+function escapeData(value: string): string {
+  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
+/** Escapes a value for use in a workflow command property (e.g. `file=`). */
+function escapeProperty(value: string): string {
+  return escapeData(value).replace(/:/g, "%3A").replace(/,/g, "%2C");
+}
+
+/**
+ * Formats the summary as GitHub Actions workflow commands so problems surface as
+ * inline annotations on the run and pull request. Paths are emitted relative to
+ * `GITHUB_WORKSPACE` (falling back to `cwd`), which is what GitHub expects when
+ * anchoring annotations to files in the checkout.
+ */
+export function formatGithub(summary: LintSummary, cwd: string): string {
+  const base = process.env.GITHUB_WORKSPACE || cwd;
+  const lines: string[] = [];
+
+  for (const result of summary.results) {
+    const file = path.relative(base, result.filePath) || result.filePath;
+    for (const message of result.messages) {
+      const command = message.severity === "error" ? "error" : "warning";
+      const props = [
+        `file=${escapeProperty(file)}`,
+        `line=${message.line}`,
+        `endLine=${message.endLine}`,
+        `col=${message.column}`,
+        `endColumn=${message.endColumn}`,
+      ].join(",");
+      const title = message.rule ? `[${message.rule}] ` : "";
+      lines.push(
+        `::${command} ${props}::${escapeData(title + message.message)}`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
 export function formatJson(summary: LintSummary): string {
   return JSON.stringify(
     {
