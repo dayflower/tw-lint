@@ -10,7 +10,7 @@ import {
   formatJson,
   formatText,
 } from "./reporter.js";
-import { runCli } from "./run.js";
+import { parseFixPasses, runCli } from "./run.js";
 import { createTailwindSettings, parseRuleOverride } from "./settings.js";
 import type { RuleName, RuleSeverity } from "./types.js";
 
@@ -24,6 +24,7 @@ interface CliOptions {
   quiet?: boolean;
   fix?: boolean;
   fixDryRun?: boolean;
+  fixPasses?: string | number;
   errorOnNoProject?: boolean;
   verbose?: boolean;
 }
@@ -53,6 +54,10 @@ async function main(): Promise<number> {
     .option("--fix", "Automatically fix problems and write changes to files")
     .option("--fix-dry-run", "Compute fixes without writing changes to files")
     .option(
+      "--fix-passes <n>",
+      "Max fix passes when fixing (default 10; 0 or 1 = single pass)",
+    )
+    .option(
       "--no-error-on-no-project",
       "Exit 0 (instead of 2) when no Tailwind project is detected",
     )
@@ -78,7 +83,10 @@ async function main(): Promise<number> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
 
   // Config file provides the base; CLI flags override it.
-  const { overrides } = await loadLinterConfig(cwd, options.config);
+  const { overrides, fixPasses: configFixPasses } = await loadLinterConfig(
+    cwd,
+    options.config,
+  );
 
   const cliRules: Partial<Record<RuleName, RuleSeverity>> = {};
   for (const entry of asArray(options.severity)) {
@@ -97,11 +105,18 @@ async function main(): Promise<number> {
       ? "apply"
       : "none";
 
+  // Precedence: CLI flag > config file > runLint default (10).
+  const fixPasses =
+    options.fixPasses !== undefined
+      ? parseFixPasses(options.fixPasses)
+      : configFixPasses;
+
   const { summary, exitCode, notes } = await runCli({
     cwd,
     globs,
     settings,
     fix,
+    fixPasses,
     verbose: options.verbose,
     maxWarnings: options.maxWarnings,
     errorOnNoProject: options.errorOnNoProject,

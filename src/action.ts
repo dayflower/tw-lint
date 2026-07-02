@@ -6,7 +6,7 @@ import * as core from "@actions/core";
 import { loadLinterConfig } from "./config.js";
 import type { FixMode } from "./lint.js";
 import { applyQuietFilter, formatGithub, formatText } from "./reporter.js";
-import { runCli } from "./run.js";
+import { parseFixPasses, runCli } from "./run.js";
 import { createTailwindSettings, parseRuleOverride } from "./settings.js";
 import type { RuleName, RuleSeverity } from "./types.js";
 
@@ -56,7 +56,10 @@ async function main(): Promise<void> {
   const cwd = path.resolve(process.cwd(), workingDirectory);
 
   // Config file provides the base; action inputs override it.
-  const { overrides } = await loadLinterConfig(cwd, getOptional("config"));
+  const { overrides, fixPasses: configFixPasses } = await loadLinterConfig(
+    cwd,
+    getOptional("config"),
+  );
 
   const cliRules: Partial<Record<RuleName, RuleSeverity>> = {};
   for (const entry of core.getMultilineInput("severity")) {
@@ -82,11 +85,19 @@ async function main(): Promise<void> {
   const maxWarnings = getOptional("max-warnings");
   const errorOnNoProject = getBoolean("error-on-no-project", true);
 
+  // Precedence: action input > config file > runLint default (10).
+  const fixPassesInput = getOptional("fix-passes");
+  const fixPasses =
+    fixPassesInput !== undefined
+      ? parseFixPasses(fixPassesInput)
+      : configFixPasses;
+
   const { summary, exitCode, notes } = await runCli({
     cwd,
     globs,
     settings,
     fix,
+    fixPasses,
     verbose: getBoolean("verbose", false),
     maxWarnings,
     errorOnNoProject,

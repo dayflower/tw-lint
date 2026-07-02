@@ -10,6 +10,8 @@ export interface RunCliOptions {
   globs: string[];
   settings: TailwindCssSettings;
   fix: FixMode;
+  /** Maximum number of fix passes (0 or 1 = single pass). Defaults to 10. */
+  fixPasses?: number;
   verbose?: boolean;
   /** Warning count that triggers a non-zero exit code. */
   maxWarnings?: string | number;
@@ -38,6 +40,7 @@ export async function runCli(options: RunCliOptions): Promise<RunCliResult> {
     patterns: options.globs,
     settings: options.settings,
     fix: options.fix,
+    fixPasses: options.fixPasses,
     verbose: options.verbose,
   });
 
@@ -81,6 +84,17 @@ export async function runCli(options: RunCliOptions): Promise<RunCliResult> {
   }
 
   return { summary, exitCode, notes };
+}
+
+/** Parses and validates a fix-pass count (a non-negative integer). */
+export function parseFixPasses(value: string | number): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error(
+      `Invalid fix passes value "${value}". Expected a non-negative integer.`,
+    );
+  }
+  return n;
 }
 
 export function resolveExitCode(

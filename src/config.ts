@@ -19,6 +19,8 @@ export const PACKAGE_JSON_KEY = "tw-lint";
 
 export interface LoadedConfig {
   overrides: SettingsOverrides;
+  /** Maximum number of `--fix` passes; undefined when the config omits it. */
+  fixPasses?: number;
   /** Absolute path of the config source, or undefined when none was found. */
   source?: string;
 }
@@ -29,6 +31,7 @@ interface RawConfig {
   classFunctions?: unknown;
   includeLanguages?: unknown;
   tailwindConfig?: unknown;
+  fixPasses?: unknown;
 }
 
 /**
@@ -44,8 +47,18 @@ export async function loadLinterConfig(
   if (!found) return { overrides: {} };
   return {
     overrides: parseConfig(found.raw, found.source),
+    ...(found.raw.fixPasses !== undefined
+      ? { fixPasses: parseFixPasses(found.raw.fixPasses, found.source) }
+      : {}),
     source: found.source,
   };
+}
+
+function parseFixPasses(value: unknown, source: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`"fixPasses" in ${source} must be a non-negative integer.`);
+  }
+  return value;
 }
 
 async function resolveConfigSource(
