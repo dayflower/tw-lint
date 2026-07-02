@@ -76,7 +76,17 @@ tw-lint --severity cssConflict=error
 
 # Apply fixes
 tw-lint "src/**/*.html" --fix
+
+# Apply fixes in a single pass (do not loop)
+tw-lint "src/**/*.html" --fix --fix-passes 1
 ```
+
+When a single `class` attribute has fixes that overlap (for example a
+conflicting-utility removal and a canonical-class rewrite), only the
+non-overlapping edits can be applied in one pass. `--fix` therefore runs up to
+`--fix-passes` passes (default `10`, like ESLint's autofix), re-applying fixes
+until nothing changes. Set `--fix-passes 0` or `--fix-passes 1` to keep the
+old single-pass behaviour.
 
 ### Options
 
@@ -91,6 +101,7 @@ tw-lint "src/**/*.html" --fix
 | `--quiet` | Report errors only. |
 | `--fix` | Apply fixes and write changes to files. |
 | `--fix-dry-run` | Compute fixes without writing changes. |
+| `--fix-passes <n>` | Max fix passes when fixing (default `10`; `0` or `1` = single pass). |
 | `--no-error-on-no-project` | Exit `0` instead of `2` when no Tailwind project is detected. |
 | `--verbose` | Print language server logs to stderr. |
 
@@ -119,7 +130,9 @@ Use `-c, --config <file>` to point at a specific file instead.
   // Map extra language ids to a known one (e.g. for custom templates)
   "includeLanguages": { "plaintext": "html" },
   // Equivalent to --tailwind-config
-  "tailwindConfig": "./tailwind.config.ts"
+  "tailwindConfig": "./tailwind.config.ts",
+  // Equivalent to --fix-passes (max fix passes; 0 or 1 = single pass)
+  "fixPasses": 10
 }
 ```
 
@@ -200,6 +213,7 @@ Each input maps to the matching CLI option:
 | `quiet`               | `--quiet`                 | `false` |
 | `fix`                 | `--fix`                   | `false` |
 | `fix-dry-run`         | `--fix-dry-run`           | `false` |
+| `fix-passes`          | `--fix-passes`            | `10`    |
 | `error-on-no-project` | `--no-error-on-no-project` (inverted) | `true` |
 | `verbose`             | `--verbose`               | `false` |
 

@@ -204,4 +204,40 @@ describe("runLint --fix", () => {
     });
     expect(after.warningCount).toBeLessThan(before.warningCount);
   });
+
+  // `w-[36rem]` (canonical suggestion) and the duplicate `p-4` (conflicting
+  // utility) sit in the same class attribute, so their fixes overlap and only
+  // one lands per pass. Multiple passes are needed to converge.
+  const overlapping = '<div class="w-[36rem] p-2 p-4"></div>\n';
+
+  it("keeps fixing across passes until convergence (default)", async () => {
+    writeFileSync(tmpPath, overlapping);
+
+    const summary = await runLint({
+      cwd,
+      patterns: [tmpName],
+      settings: createTailwindSettings(),
+      fix: "apply",
+    });
+
+    expect(summary.fixCount).toBeGreaterThanOrEqual(2);
+    expect(summary.warningCount).toBe(0);
+    expect(readFileSync(tmpPath, "utf8")).toContain("w-xl");
+  });
+
+  it("stops after one pass when fixPasses is 1, leaving a fixable warning", async () => {
+    writeFileSync(tmpPath, overlapping);
+
+    const summary = await runLint({
+      cwd,
+      patterns: [tmpName],
+      settings: createTailwindSettings(),
+      fix: "apply",
+      fixPasses: 1,
+    });
+
+    // One pass removes the conflicting `p-4` but leaves the canonical rewrite.
+    expect(summary.warningCount).toBe(1);
+    expect(readFileSync(tmpPath, "utf8")).toContain("w-[36rem]");
+  });
 });

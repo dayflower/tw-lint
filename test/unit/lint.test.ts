@@ -50,6 +50,32 @@ function fixAction(uri: string, newText: string): CodeAction {
   };
 }
 
+/** A quick-fix that replaces a single-line character range with `newText`. */
+function rangeAction(
+  uri: string,
+  start: number,
+  end: number,
+  newText: string,
+): CodeAction {
+  return {
+    title: "fix",
+    kind: "quickfix",
+    edit: {
+      changes: {
+        [uri]: [
+          {
+            range: {
+              start: { line: 0, character: start },
+              end: { line: 0, character: end },
+            },
+            newText,
+          },
+        ],
+      },
+    },
+  };
+}
+
 const filePath = "/project/index.html";
 
 describe("lintDocument", () => {
@@ -157,6 +183,126 @@ describe("lintDocument", () => {
     expect(result.output).toBe("WORLD world");
     // Remaining diagnostics come from the re-validation (now empty).
     expect(result.messages).toHaveLength(0);
+  });
+
+  it("loops fix passes until a pass stops changing the text", async () => {
+    const uri = URI.file(filePath).toString();
+    const diagnostics = vi
+      .fn<(filePath: string) => Promise<ValidationResult>>()
+      .mockResolvedValue({
+        kind: "diagnostics",
+        diagnostics: [
+          diagnostic(
+            "warn",
+            DiagnosticSeverity.Warning,
+            "suggestCanonicalClasses",
+          ),
+        ],
+      });
+    // Each pass fixes one more character; the third pass offers nothing.
+    const codeActions = vi
+      .fn()
+      .mockResolvedValueOnce([rangeAction(uri, 0, 1, "x")])
+      .mockResolvedValueOnce([rangeAction(uri, 2, 3, "x")])
+      .mockResolvedValueOnce([]);
+    const validate = vi
+      .fn<(filePath: string, text: string) => Promise<ValidationResult>>()
+      .mockResolvedValue({ kind: "diagnostics", diagnostics: [] });
+
+    const client: LintClient = { diagnostics, codeActions, validate };
+
+    const result = await lintDocument(
+      client,
+      { filePath, text: "1 2 3" },
+      "dry-run",
+    );
+
+    expect(codeActions).toHaveBeenCalledTimes(3);
+    expect(validate).toHaveBeenCalledTimes(2);
+    expect(result.fixCount).toBe(2);
+    expect(result.output).toBe("x x 3");
+  });
+
+  it("applies a single pass when maxPasses is 1, leaving further-fixable problems", async () => {
+    const uri = URI.file(filePath).toString();
+    const remaining: ValidationResult = {
+      kind: "diagnostics",
+      diagnostics: [
+        diagnostic(
+          "warn",
+          DiagnosticSeverity.Warning,
+          "suggestCanonicalClasses",
+        ),
+      ],
+    };
+    // Every pass could fix something, but maxPasses caps it at one.
+    const codeActions = vi
+      .fn()
+      .mockResolvedValue([rangeAction(uri, 0, 1, "x")]);
+    const validate = vi
+      .fn<(filePath: string, text: string) => Promise<ValidationResult>>()
+      .mockResolvedValue(remaining);
+
+    const client: LintClient = {
+      diagnostics: async () => remaining,
+      codeActions,
+      validate,
+    };
+
+    const result = await lintDocument(
+      client,
+      { filePath, text: "1 2 3" },
+      "dry-run",
+      1,
+    );
+
+    expect(codeActions).toHaveBeenCalledTimes(1);
+    expect(validate).toHaveBeenCalledTimes(1);
+    expect(result.fixCount).toBe(1);
+    expect(result.output).toBe("x 2 3");
+    // The still-fixable warning is reported (a second pass would fix it).
+    expect(result.warningCount).toBe(1);
+  });
+
+  it("treats maxPasses of 0 as a single pass", async () => {
+    const uri = URI.file(filePath).toString();
+    const codeActions = vi
+      .fn()
+      .mockResolvedValue([rangeAction(uri, 0, 1, "x")]);
+
+    const client: LintClient = {
+      diagnostics: async () => ({
+        kind: "diagnostics",
+        diagnostics: [
+          diagnostic(
+            "warn",
+            DiagnosticSeverity.Warning,
+            "suggestCanonicalClasses",
+          ),
+        ],
+      }),
+      codeActions,
+      validate: async () => ({
+        kind: "diagnostics",
+        diagnostics: [
+          diagnostic(
+            "warn",
+            DiagnosticSeverity.Warning,
+            "suggestCanonicalClasses",
+          ),
+        ],
+      }),
+    };
+
+    const result = await lintDocument(
+      client,
+      { filePath, text: "1 2 3" },
+      "dry-run",
+      0,
+    );
+
+    expect(codeActions).toHaveBeenCalledTimes(1);
+    expect(result.fixCount).toBe(1);
   });
 });
 

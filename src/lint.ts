@@ -19,6 +19,15 @@ import { fileUri } from "./uri.js";
 
 export type FixMode = "none" | "apply" | "dry-run";
 
+/**
+ * Default cap on how many times `--fix` re-applies quick-fixes before giving up,
+ * matching ESLint's `MAX_AUTOFIX_PASSES`. A single class attribute can carry
+ * overlapping fixes (e.g. a conflicting-utility removal and a canonical-class
+ * rewrite); only non-overlapping edits land per pass, so convergence may need
+ * several passes. A value of 0 or 1 disables looping (single pass).
+ */
+export const DEFAULT_FIX_PASSES = 10;
+
 /** A file selected for linting, with its resolved LSP language id. */
 export interface TargetFile {
   filePath: string;
@@ -51,6 +60,11 @@ export interface RunLintOptions {
   ignore?: string[];
   settings: TailwindCssSettings;
   fix?: FixMode;
+  /**
+   * Maximum number of fix passes when `fix` is enabled. Defaults to
+   * {@link DEFAULT_FIX_PASSES}; 0 or 1 means a single pass.
+   */
+  fixPasses?: number;
   verbose?: boolean;
   documentTimeoutMs?: number;
   /** Timeout waiting for the first Tailwind project to initialize (ms). */
@@ -86,13 +100,21 @@ export async function collectTargetFiles(
  * Returns the result without touching the filesystem — when `fixMode` is "apply"
  * the caller writes `output` back to disk. Re-validation runs against the
  * in-memory fixed text, so it is independent of any such write.
+ *
+ * When `fixMode` is not "none", fixes are applied over up to `maxPasses` passes
+ * (see {@link DEFAULT_FIX_PASSES}): each pass applies the non-overlapping edits
+ * the server offers and re-validates, repeating while a pass changes the text
+ * and the cap is not reached. This lets overlapping fixes in one class attribute
+ * converge, mirroring ESLint's multi-pass autofix.
  */
 export async function lintDocument(
   client: LintClient,
   source: { filePath: string; text: string },
   fixMode: FixMode,
+  maxPasses: number = DEFAULT_FIX_PASSES,
 ): Promise<LintResult> {
   const { filePath, text } = source;
+  const uri = fileUri(filePath);
   let timedOut = false;
   const initial = await client.diagnostics(filePath);
   let diagnostics = initial.kind === "timeout" ? [] : initial.diagnostics;
@@ -100,23 +122,33 @@ export async function lintDocument(
   let fixCount = 0;
   let output: string | undefined;
 
-  if (fixMode !== "none") {
-    const actions = await client.codeActions(filePath, text, diagnostics);
-    const edits = collectFixEdits(actions, fileUri(filePath));
-    if (edits.length > 0) {
-      const fixed = applyTextEdits(text, edits);
-      if (fixed !== text) {
-        fixCount = edits.length;
-        output = fixed;
-        // Re-lint the fixed content so remaining problems are reported.
-        const revalidated = await client.validate(filePath, fixed);
-        if (revalidated.kind === "timeout") {
-          timedOut = true;
-          diagnostics = [];
-        } else {
-          diagnostics = revalidated.diagnostics;
-        }
+  if (fixMode !== "none" && !timedOut) {
+    // A value of 0 or 1 means "single pass"; higher values loop until a pass
+    // stops changing the text (mirroring ESLint's `MAX_AUTOFIX_PASSES`).
+    const passes = Math.max(1, maxPasses);
+    let currentText = text;
+    for (let pass = 0; pass < passes; pass++) {
+      const actions = await client.codeActions(
+        filePath,
+        currentText,
+        diagnostics,
+      );
+      const edits = collectFixEdits(actions, uri);
+      if (edits.length === 0) break;
+      const fixed = applyTextEdits(currentText, edits);
+      if (fixed === currentText) break;
+      fixCount += edits.length;
+      currentText = fixed;
+      output = fixed;
+      // Re-lint the fixed content so the next pass (and the report) see the
+      // remaining problems.
+      const revalidated = await client.validate(filePath, fixed);
+      if (revalidated.kind === "timeout") {
+        timedOut = true;
+        diagnostics = [];
+        break;
       }
+      diagnostics = revalidated.diagnostics;
     }
   }
 
@@ -135,6 +167,7 @@ export async function lintDocument(
 export async function runLint(options: RunLintOptions): Promise<LintSummary> {
   const { cwd, settings } = options;
   const fix = options.fix ?? "none";
+  const fixPasses = options.fixPasses ?? DEFAULT_FIX_PASSES;
   const patterns = options.patterns?.length ? options.patterns : DEFAULT_GLOBS;
   const ignore = [...DEFAULT_IGNORE, ...(options.ignore ?? [])];
 
@@ -191,6 +224,7 @@ export async function runLint(options: RunLintOptions): Promise<LintSummary> {
         client,
         { filePath, text: source.text },
         fix,
+        fixPasses,
       );
       if (fix === "apply" && result.output !== undefined) {
         await writeFile(filePath, result.output, "utf8");
