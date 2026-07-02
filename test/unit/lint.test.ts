@@ -55,7 +55,7 @@ const filePath = "/project/index.html";
 describe("lintDocument", () => {
   it("maps diagnostics to messages and counts severities", async () => {
     const client: LintClient = {
-      validate: async (): Promise<ValidationResult> => ({
+      diagnostics: async (): Promise<ValidationResult> => ({
         kind: "diagnostics",
         diagnostics: [
           diagnostic("conflict", DiagnosticSeverity.Error, "cssConflict"),
@@ -63,6 +63,10 @@ describe("lintDocument", () => {
         ],
       }),
       codeActions: async () => [],
+      validate: async (): Promise<ValidationResult> => ({
+        kind: "diagnostics",
+        diagnostics: [],
+      }),
     };
 
     const result = await lintDocument(
@@ -84,8 +88,9 @@ describe("lintDocument", () => {
 
   it("marks a document whose validation times out", async () => {
     const client: LintClient = {
-      validate: async (): Promise<ValidationResult> => ({ kind: "timeout" }),
+      diagnostics: async (): Promise<ValidationResult> => ({ kind: "timeout" }),
       codeActions: async () => [],
+      validate: async (): Promise<ValidationResult> => ({ kind: "timeout" }),
     };
 
     const result = await lintDocument(
@@ -103,11 +108,15 @@ describe("lintDocument", () => {
   it("does not request code actions when fix mode is none", async () => {
     const codeActions = vi.fn(async () => []);
     const client: LintClient = {
-      validate: async (): Promise<ValidationResult> => ({
+      diagnostics: async (): Promise<ValidationResult> => ({
         kind: "diagnostics",
         diagnostics: [],
       }),
       codeActions,
+      validate: async (): Promise<ValidationResult> => ({
+        kind: "diagnostics",
+        diagnostics: [],
+      }),
     };
 
     await lintDocument(client, { filePath, text: "hello" }, "none");
@@ -117,19 +126,22 @@ describe("lintDocument", () => {
 
   it("applies quick-fixes and re-validates without writing to disk", async () => {
     const uri = URI.file(filePath).toString();
-    const validate = vi
-      .fn<(filePath: string, text: string) => Promise<ValidationResult>>()
-      .mockResolvedValueOnce({
+    const diagnostics = vi
+      .fn<(filePath: string) => Promise<ValidationResult>>()
+      .mockResolvedValue({
         kind: "diagnostics",
         diagnostics: [
           diagnostic("conflict", DiagnosticSeverity.Warning, "cssConflict"),
         ],
-      })
-      .mockResolvedValueOnce({ kind: "diagnostics", diagnostics: [] });
+      });
+    const validate = vi
+      .fn<(filePath: string, text: string) => Promise<ValidationResult>>()
+      .mockResolvedValue({ kind: "diagnostics", diagnostics: [] });
 
     const client: LintClient = {
-      validate,
+      diagnostics,
       codeActions: async () => [fixAction(uri, "WORLD")],
+      validate,
     };
 
     const result = await lintDocument(
@@ -138,8 +150,9 @@ describe("lintDocument", () => {
       "dry-run",
     );
 
-    expect(validate).toHaveBeenCalledTimes(2);
-    expect(validate.mock.calls[1]?.[1]).toBe("WORLD world");
+    expect(diagnostics).toHaveBeenCalledTimes(1);
+    expect(validate).toHaveBeenCalledTimes(1);
+    expect(validate.mock.calls[0]?.[1]).toBe("WORLD world");
     expect(result.fixCount).toBe(1);
     expect(result.output).toBe("WORLD world");
     // Remaining diagnostics come from the re-validation (now empty).
