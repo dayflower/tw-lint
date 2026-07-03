@@ -73,6 +73,18 @@ export interface LintMessage {
   endColumn: number;
 }
 
+/** A fix that was applied to a document (surfaced by `--report-fixed`). */
+export interface FixedMessage {
+  /** The diagnostic rule the fix addressed, or null if unknown. */
+  rule: string | null;
+  /** Human-readable description of the fix (the code action title). */
+  message: string;
+  /** 1-based line number of the fixed location. */
+  line: number;
+  /** 1-based column number of the fixed location. */
+  column: number;
+}
+
 export interface LintResult {
   /** Absolute path of the linted file. */
   filePath: string;
@@ -81,6 +93,8 @@ export interface LintResult {
   warningCount: number;
   /** Number of fixes applied to this file (only set when running with fix). */
   fixCount?: number;
+  /** Details of the fixes applied to this file (only set when running with fix). */
+  fixedMessages?: FixedMessage[];
   /** Source text after fixes were applied (only set when running with fix). */
   output?: string;
   /** True when diagnostics never arrived for this file before timing out. */

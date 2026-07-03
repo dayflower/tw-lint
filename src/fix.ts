@@ -54,31 +54,66 @@ export function rangesOverlap(a: Range, b: Range): boolean {
   return !(beforeOrTouch || afterOrTouch);
 }
 
+/** A quick-fix edit together with the metadata needed to report it. */
+export interface AppliedFix {
+  edit: TextEdit;
+  /** The code action title, e.g. "Replace with 'w-xl'". */
+  title: string;
+  /** Rule of the diagnostic the fix addresses, or null if unknown. */
+  rule: string | null;
+  /** 0-based line of the fixed location (diagnostic start, else edit start). */
+  line: number;
+  /** 0-based character of the fixed location. */
+  character: number;
+}
+
 /**
- * Collects the non-overlapping quick-fix text edits that target `targetUri`
- * from a list of code actions. Overlapping edits (e.g. two fixes touching the
- * same class) are skipped to avoid producing broken output in a single pass;
- * the remaining issues can be fixed on a subsequent run.
+ * Collects the non-overlapping quick-fixes that target `targetUri` from a list
+ * of code actions, keeping each edit's title/rule/location. Overlapping edits
+ * (e.g. two fixes touching the same class) are skipped to avoid producing broken
+ * output in a single pass; the remaining issues are picked up on a later pass.
  */
-export function collectFixEdits(
+export function collectAppliedFixes(
   actions: (Command | CodeAction)[],
   targetUri: string,
-): TextEdit[] {
+): AppliedFix[] {
   const normalizedTarget = normalizeUri(targetUri);
-  const edits: TextEdit[] = [];
+  const fixes: AppliedFix[] = [];
 
   for (const action of actions) {
     if (!CodeAction.is(action)) continue;
     if (action.kind && !action.kind.startsWith("quickfix")) continue;
     const changes = collectEditsForUri(action, normalizedTarget);
     for (const edit of changes) {
-      if (edits.some((existing) => rangesOverlap(existing.range, edit.range)))
+      if (
+        fixes.some((existing) => rangesOverlap(existing.edit.range, edit.range))
+      )
         continue;
-      edits.push(edit);
+      const diagnostic = action.diagnostics?.[0];
+      const position = diagnostic?.range.start ?? edit.range.start;
+      fixes.push({
+        edit,
+        title: action.title,
+        rule: diagnostic?.code != null ? String(diagnostic.code) : null,
+        line: position.line,
+        character: position.character,
+      });
     }
   }
 
-  return edits;
+  return fixes;
+}
+
+/**
+ * Collects the non-overlapping quick-fix text edits that target `targetUri`.
+ * Thin wrapper over {@link collectAppliedFixes} for callers that only need the
+ * edits.
+ */
+export function collectFixEdits(
+  actions: (Command | CodeAction)[],
+  targetUri: string,
+): TextEdit[] {
+  return collectAppliedFixes(actions, targetUri).map((fix) => fix.edit);
 }
 
 function collectEditsForUri(

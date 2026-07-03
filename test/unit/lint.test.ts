@@ -223,6 +223,76 @@ describe("lintDocument", () => {
     expect(result.output).toBe("x x 3");
   });
 
+  it("records the applied fixes (title, rule, position) across passes", async () => {
+    const uri = URI.file(filePath).toString();
+    const withDiagnostic = (
+      title: string,
+      code: string,
+      start: number,
+    ): CodeAction => ({
+      title,
+      kind: "quickfix",
+      diagnostics: [
+        {
+          range: {
+            start: { line: 0, character: start },
+            end: { line: 0, character: start + 1 },
+          },
+          severity: DiagnosticSeverity.Warning,
+          message: "m",
+          code,
+        },
+      ],
+      edit: {
+        changes: {
+          [uri]: [
+            {
+              range: {
+                start: { line: 0, character: start },
+                end: { line: 0, character: start + 1 },
+              },
+              newText: "x",
+            },
+          ],
+        },
+      },
+    });
+    const codeActions = vi
+      .fn()
+      .mockResolvedValueOnce([withDiagnostic("Delete 'p-4'", "cssConflict", 0)])
+      .mockResolvedValueOnce([
+        withDiagnostic("Replace with 'w-xl'", "suggestCanonicalClasses", 2),
+      ])
+      .mockResolvedValueOnce([]);
+
+    const client: LintClient = {
+      diagnostics: async () => ({
+        kind: "diagnostics",
+        diagnostics: [
+          diagnostic("m", DiagnosticSeverity.Warning, "cssConflict"),
+        ],
+      }),
+      codeActions,
+      validate: async () => ({ kind: "diagnostics", diagnostics: [] }),
+    };
+
+    const result = await lintDocument(
+      client,
+      { filePath, text: "1 2 3" },
+      "dry-run",
+    );
+
+    expect(result.fixedMessages).toEqual([
+      { rule: "cssConflict", message: "Delete 'p-4'", line: 1, column: 1 },
+      {
+        rule: "suggestCanonicalClasses",
+        message: "Replace with 'w-xl'",
+        line: 1,
+        column: 3,
+      },
+    ]);
+  });
+
   it("applies a single pass when maxPasses is 1, leaving further-fixable problems", async () => {
     const uri = URI.file(filePath).toString();
     const remaining: ValidationResult = {

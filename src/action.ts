@@ -56,10 +56,11 @@ async function main(): Promise<void> {
   const cwd = path.resolve(process.cwd(), workingDirectory);
 
   // Config file provides the base; action inputs override it.
-  const { overrides, fixPasses: configFixPasses } = await loadLinterConfig(
-    cwd,
-    getOptional("config"),
-  );
+  const {
+    overrides,
+    fixPasses: configFixPasses,
+    reportFixed: configReportFixed,
+  } = await loadLinterConfig(cwd, getOptional("config"));
 
   const cliRules: Partial<Record<RuleName, RuleSeverity>> = {};
   for (const entry of core.getMultilineInput("severity")) {
@@ -106,13 +107,16 @@ async function main(): Promise<void> {
   for (const note of notes) core.warning(note);
 
   const reported = quiet ? applyQuietFilter(summary) : summary;
+  // Precedence: action input > config file > default (off). An empty input
+  // (the default) falls back to the config value.
+  const reportFixed = getBoolean("report-fixed", configReportFixed ?? false);
 
   // Emit workflow commands so problems appear as inline annotations, and a
   // human-readable summary in the run log.
   const annotations = formatGithub(reported, cwd);
   if (annotations.length > 0) process.stdout.write(`${annotations}\n`);
 
-  const text = formatText(reported, cwd);
+  const text = formatText(reported, cwd, { reportFixed });
   if (text.trim().length > 0) core.info(text);
 
   core.setOutput("error-count", summary.errorCount);

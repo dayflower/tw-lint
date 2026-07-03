@@ -25,6 +25,7 @@ interface CliOptions {
   fix?: boolean;
   fixDryRun?: boolean;
   fixPasses?: string | number;
+  reportFixed?: boolean;
   errorOnNoProject?: boolean;
   verbose?: boolean;
 }
@@ -57,6 +58,7 @@ async function main(): Promise<number> {
       "--fix-passes <n>",
       "Max fix passes when fixing (default 10; 0 or 1 = single pass)",
     )
+    .option("--report-fixed", "List the fixes applied when fixing")
     .option(
       "--no-error-on-no-project",
       "Exit 0 (instead of 2) when no Tailwind project is detected",
@@ -83,10 +85,11 @@ async function main(): Promise<number> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
 
   // Config file provides the base; CLI flags override it.
-  const { overrides, fixPasses: configFixPasses } = await loadLinterConfig(
-    cwd,
-    options.config,
-  );
+  const {
+    overrides,
+    fixPasses: configFixPasses,
+    reportFixed: configReportFixed,
+  } = await loadLinterConfig(cwd, options.config);
 
   const cliRules: Partial<Record<RuleName, RuleSeverity>> = {};
   for (const entry of asArray(options.severity)) {
@@ -127,16 +130,18 @@ async function main(): Promise<number> {
   }
 
   const reported = options.quiet ? applyQuietFilter(summary) : summary;
+  // Precedence: CLI flag > config file > default (off).
+  const reportFixed = options.reportFixed ?? configReportFixed ?? false;
 
   if (format === "json") {
-    process.stdout.write(`${formatJson(reported)}\n`);
+    process.stdout.write(`${formatJson(reported, { reportFixed })}\n`);
   } else if (format === "github") {
     const text = formatGithub(reported, cwd);
     if (text.length > 0) {
       process.stdout.write(`${text}\n`);
     }
   } else {
-    const text = formatText(reported, cwd);
+    const text = formatText(reported, cwd, { reportFixed });
     if (text.trim().length > 0) {
       process.stdout.write(`${text}\n`);
     }

@@ -7,6 +7,7 @@ import type {
 import { URI } from "vscode-uri";
 import {
   applyTextEdits,
+  collectAppliedFixes,
   collectFixEdits,
   rangesOverlap,
 } from "../../src/fix.js";
@@ -136,5 +137,56 @@ describe("collectFixEdits", () => {
       targetUri,
     );
     expect(edits).toEqual([first]);
+  });
+});
+
+describe("collectAppliedFixes", () => {
+  const targetUri = URI.file("/project/index.html").toString();
+
+  it("captures the action title, rule, and diagnostic position", () => {
+    const e = edit("w-xl", 0, 12, 0, 21);
+    const fixes = collectAppliedFixes(
+      [
+        {
+          title: "Replace with 'w-xl'",
+          kind: "quickfix",
+          diagnostics: [
+            {
+              range: range(3, 16, 3, 25),
+              message: "The class `w-[36rem]` can be written as `w-xl`",
+              code: "suggestCanonicalClasses",
+            },
+          ],
+          edit: { changes: { [targetUri]: [e] } },
+        },
+      ],
+      targetUri,
+    );
+    expect(fixes).toEqual([
+      {
+        edit: e,
+        title: "Replace with 'w-xl'",
+        rule: "suggestCanonicalClasses",
+        line: 3,
+        character: 16,
+      },
+    ]);
+  });
+
+  it("falls back to the edit position and null rule without a diagnostic", () => {
+    const e = edit("flex", 1, 2, 1, 6);
+    const fixes = collectAppliedFixes(
+      [
+        {
+          title: "fix",
+          kind: "quickfix",
+          edit: { changes: { [targetUri]: [e] } },
+        },
+      ],
+      targetUri,
+    );
+    expect(fixes).toEqual([
+      { edit: e, title: "fix", rule: null, line: 1, character: 2 },
+    ]);
   });
 });

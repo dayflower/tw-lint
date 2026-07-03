@@ -53,6 +53,10 @@ inputs:
       pass).
     required: false
     default: ""
+  report-fixed:
+    description: List the fixes applied when fixing.
+    required: false
+    default: ""
   error-on-no-project:
     description: >-
       Fail the run when no Tailwind project is detected. Set to `false` to treat
