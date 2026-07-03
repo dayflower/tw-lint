@@ -1,5 +1,7 @@
 # tw-lint
 
+[![npm version](https://img.shields.io/npm/v/@dayflower/tw-lint.svg)](https://www.npmjs.com/package/@dayflower/tw-lint)
+
 An unofficial command-line linter for [Tailwind CSS](https://tailwindcss.com)
 powered by the Tailwind CSS language tooling.
 
