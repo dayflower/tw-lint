@@ -21,6 +21,8 @@ export interface LoadedConfig {
   overrides: SettingsOverrides;
   /** Maximum number of `--fix` passes; undefined when the config omits it. */
   fixPasses?: number;
+  /** List the fixes applied; undefined when the config omits it. */
+  reportFixed?: boolean;
   /** Absolute path of the config source, or undefined when none was found. */
   source?: string;
 }
@@ -32,6 +34,7 @@ interface RawConfig {
   includeLanguages?: unknown;
   tailwindConfig?: unknown;
   fixPasses?: unknown;
+  reportFixed?: unknown;
 }
 
 /**
@@ -50,6 +53,9 @@ export async function loadLinterConfig(
     ...(found.raw.fixPasses !== undefined
       ? { fixPasses: parseFixPasses(found.raw.fixPasses, found.source) }
       : {}),
+    ...(found.raw.reportFixed !== undefined
+      ? { reportFixed: parseReportFixed(found.raw.reportFixed, found.source) }
+      : {}),
     source: found.source,
   };
 }
@@ -57,6 +63,13 @@ export async function loadLinterConfig(
 function parseFixPasses(value: unknown, source: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     throw new Error(`"fixPasses" in ${source} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function parseReportFixed(value: unknown, source: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`"reportFixed" in ${source} must be a boolean.`);
   }
   return value;
 }

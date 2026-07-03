@@ -85,10 +85,11 @@ async function main(): Promise<number> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
 
   // Config file provides the base; CLI flags override it.
-  const { overrides, fixPasses: configFixPasses } = await loadLinterConfig(
-    cwd,
-    options.config,
-  );
+  const {
+    overrides,
+    fixPasses: configFixPasses,
+    reportFixed: configReportFixed,
+  } = await loadLinterConfig(cwd, options.config);
 
   const cliRules: Partial<Record<RuleName, RuleSeverity>> = {};
   for (const entry of asArray(options.severity)) {
@@ -129,7 +130,8 @@ async function main(): Promise<number> {
   }
 
   const reported = options.quiet ? applyQuietFilter(summary) : summary;
-  const reportFixed = Boolean(options.reportFixed);
+  // Precedence: CLI flag > config file > default (off).
+  const reportFixed = options.reportFixed ?? configReportFixed ?? false;
 
   if (format === "json") {
     process.stdout.write(`${formatJson(reported, { reportFixed })}\n`);

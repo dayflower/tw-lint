@@ -145,7 +145,9 @@ Use `-c, --config <file>` to point at a specific file instead.
   // Equivalent to --tailwind-config
   "tailwindConfig": "./tailwind.config.ts",
   // Equivalent to --fix-passes (max fix passes; 0 or 1 = single pass)
-  "fixPasses": 10
+  "fixPasses": 10,
+  // Equivalent to --report-fixed (list the fixes applied)
+  "reportFixed": false
 }
 ```
 

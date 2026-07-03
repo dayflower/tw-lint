@@ -38,6 +38,34 @@ describe("loadLinterConfig", () => {
     expect(overrides.configFile).toBe("tailwind.config.ts");
   });
 
+  it("loads fixPasses and reportFixed from a config file", async () => {
+    writeConfig("tw-lint.config.json", { fixPasses: 3, reportFixed: true });
+    const { fixPasses, reportFixed } = await loadLinterConfig(dir);
+    expect(fixPasses).toBe(3);
+    expect(reportFixed).toBe(true);
+  });
+
+  it("leaves fixPasses and reportFixed undefined when omitted", async () => {
+    writeConfig("tw-lint.config.json", { rules: {} });
+    const { fixPasses, reportFixed } = await loadLinterConfig(dir);
+    expect(fixPasses).toBeUndefined();
+    expect(reportFixed).toBeUndefined();
+  });
+
+  it("rejects a non-integer fixPasses", async () => {
+    writeConfig("tw-lint.config.json", { fixPasses: 1.5 });
+    await expect(loadLinterConfig(dir)).rejects.toThrow(
+      /"fixPasses".*non-negative integer/,
+    );
+  });
+
+  it("rejects a non-boolean reportFixed", async () => {
+    writeConfig("tw-lint.config.json", { reportFixed: "yes" });
+    await expect(loadLinterConfig(dir)).rejects.toThrow(
+      /"reportFixed".*must be a boolean/,
+    );
+  });
+
   it("falls back to the package.json key", async () => {
     writeConfig("package.json", {
       name: "demo",
