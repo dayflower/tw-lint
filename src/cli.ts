@@ -25,6 +25,7 @@ interface CliOptions {
   fix?: boolean;
   fixDryRun?: boolean;
   fixPasses?: string | number;
+  reportFixed?: boolean;
   errorOnNoProject?: boolean;
   verbose?: boolean;
 }
@@ -57,6 +58,7 @@ async function main(): Promise<number> {
       "--fix-passes <n>",
       "Max fix passes when fixing (default 10; 0 or 1 = single pass)",
     )
+    .option("--report-fixed", "List the fixes applied when fixing")
     .option(
       "--no-error-on-no-project",
       "Exit 0 (instead of 2) when no Tailwind project is detected",
@@ -127,16 +129,17 @@ async function main(): Promise<number> {
   }
 
   const reported = options.quiet ? applyQuietFilter(summary) : summary;
+  const reportFixed = Boolean(options.reportFixed);
 
   if (format === "json") {
-    process.stdout.write(`${formatJson(reported)}\n`);
+    process.stdout.write(`${formatJson(reported, { reportFixed })}\n`);
   } else if (format === "github") {
     const text = formatGithub(reported, cwd);
     if (text.length > 0) {
       process.stdout.write(`${text}\n`);
     }
   } else {
-    const text = formatText(reported, cwd);
+    const text = formatText(reported, cwd, { reportFixed });
     if (text.trim().length > 0) {
       process.stdout.write(`${text}\n`);
     }

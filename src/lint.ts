@@ -6,7 +6,7 @@ import type {
   Diagnostic,
 } from "vscode-languageserver-protocol/node";
 import { TailwindLanguageClient, type ValidationResult } from "./client.js";
-import { applyTextEdits, collectFixEdits } from "./fix.js";
+import { applyTextEdits, collectAppliedFixes } from "./fix.js";
 import {
   DEFAULT_GLOBS,
   DEFAULT_IGNORE,
@@ -14,7 +14,7 @@ import {
 } from "./languages.js";
 import { summarize, toLintMessages } from "./reporter.js";
 import type { TailwindCssSettings } from "./settings.js";
-import type { LintResult, LintSummary } from "./types.js";
+import type { FixedMessage, LintResult, LintSummary } from "./types.js";
 import { fileUri } from "./uri.js";
 
 export type FixMode = "none" | "apply" | "dry-run";
@@ -121,6 +121,7 @@ export async function lintDocument(
   if (initial.kind === "timeout") timedOut = true;
   let fixCount = 0;
   let output: string | undefined;
+  const fixedMessages: FixedMessage[] = [];
 
   if (fixMode !== "none" && !timedOut) {
     // A value of 0 or 1 means "single pass"; higher values loop until a pass
@@ -133,11 +134,22 @@ export async function lintDocument(
         currentText,
         diagnostics,
       );
-      const edits = collectFixEdits(actions, uri);
-      if (edits.length === 0) break;
-      const fixed = applyTextEdits(currentText, edits);
+      const fixes = collectAppliedFixes(actions, uri);
+      if (fixes.length === 0) break;
+      const fixed = applyTextEdits(
+        currentText,
+        fixes.map((fix) => fix.edit),
+      );
       if (fixed === currentText) break;
-      fixCount += edits.length;
+      fixCount += fixes.length;
+      for (const fix of fixes) {
+        fixedMessages.push({
+          rule: fix.rule,
+          message: fix.title,
+          line: fix.line + 1,
+          column: fix.character + 1,
+        });
+      }
       currentText = fixed;
       output = fixed;
       // Re-lint the fixed content so the next pass (and the report) see the
@@ -159,6 +171,7 @@ export async function lintDocument(
     errorCount: messages.filter((m) => m.severity === "error").length,
     warningCount: messages.filter((m) => m.severity === "warning").length,
     ...(fixCount > 0 ? { fixCount } : {}),
+    ...(fixedMessages.length > 0 ? { fixedMessages } : {}),
     ...(output !== undefined ? { output } : {}),
     ...(timedOut ? { timedOut: true } : {}),
   };

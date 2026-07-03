@@ -106,13 +106,14 @@ async function main(): Promise<void> {
   for (const note of notes) core.warning(note);
 
   const reported = quiet ? applyQuietFilter(summary) : summary;
+  const reportFixed = getBoolean("report-fixed", false);
 
   // Emit workflow commands so problems appear as inline annotations, and a
   // human-readable summary in the run log.
   const annotations = formatGithub(reported, cwd);
   if (annotations.length > 0) process.stdout.write(`${annotations}\n`);
 
-  const text = formatText(reported, cwd);
+  const text = formatText(reported, cwd, { reportFixed });
   if (text.trim().length > 0) core.info(text);
 
   core.setOutput("error-count", summary.errorCount);

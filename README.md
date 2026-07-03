@@ -88,6 +88,18 @@ non-overlapping edits can be applied in one pass. `--fix` therefore runs up to
 until nothing changes. Set `--fix-passes 0` or `--fix-passes 1` to keep the
 old single-pass behaviour.
 
+Fixed problems disappear from the report once applied (only a count is shown, as
+with ESLint). Pass `--report-fixed` to also list each applied fix under a
+`Fixed` section (and, with `--format json`, a `fixedMessages` array per file):
+
+```
+Fixed
+src/Button.tsx
+  4:17  fixed  Replace with 'w-xl'  suggestCanonicalClasses
+  4:27  fixed  Delete 'p-4'         cssConflict
+✔ 2 issues fixed
+```
+
 ### Options
 
 | Option | Description |
@@ -102,6 +114,7 @@ old single-pass behaviour.
 | `--fix` | Apply fixes and write changes to files. |
 | `--fix-dry-run` | Compute fixes without writing changes. |
 | `--fix-passes <n>` | Max fix passes when fixing (default `10`; `0` or `1` = single pass). |
+| `--report-fixed` | List the individual fixes applied (off by default). |
 | `--no-error-on-no-project` | Exit `0` instead of `2` when no Tailwind project is detected. |
 | `--verbose` | Print language server logs to stderr. |
 
@@ -214,6 +227,7 @@ Each input maps to the matching CLI option:
 | `fix`                 | `--fix`                   | `false` |
 | `fix-dry-run`         | `--fix-dry-run`           | `false` |
 | `fix-passes`          | `--fix-passes`            | `10`    |
+| `report-fixed`        | `--report-fixed`          | `false` |
 | `error-on-no-project` | `--no-error-on-no-project` (inverted) | `true` |
 | `verbose`             | `--verbose`               | `false` |
 

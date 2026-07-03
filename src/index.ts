@@ -15,7 +15,12 @@ export {
   DEFAULT_IGNORE,
   languageIdForFile,
 } from "./languages.js";
-export { type FixMode, type RunLintOptions, runLint } from "./lint.js";
+export {
+  DEFAULT_FIX_PASSES,
+  type FixMode,
+  type RunLintOptions,
+  runLint,
+} from "./lint.js";
 export {
   formatGithub,
   formatJson,
@@ -36,6 +41,7 @@ export {
   type TailwindCssSettings,
 } from "./settings.js";
 export {
+  type FixedMessage,
   type LintMessage,
   type LintResult,
   type LintSummary,

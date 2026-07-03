@@ -60,7 +60,16 @@ export function applyQuietFilter(summary: LintSummary): LintSummary {
   return { ...summary, results, warningCount: 0 };
 }
 
-export function formatText(summary: LintSummary, cwd: string): string {
+export interface FormatTextOptions {
+  /** List the individual fixes that were applied (from `--report-fixed`). */
+  reportFixed?: boolean;
+}
+
+export function formatText(
+  summary: LintSummary,
+  cwd: string,
+  options: FormatTextOptions = {},
+): string {
   const lines: string[] = [];
 
   for (const result of summary.results) {
@@ -88,6 +97,13 @@ export function formatText(summary: LintSummary, cwd: string): string {
     lines.push(pc.green("✔ No problems found"));
   }
 
+  if (options.reportFixed) {
+    const fixedLines = formatFixedSection(summary, cwd);
+    if (fixedLines.length > 0) {
+      lines.push("", pc.bold("Fixed"), ...fixedLines);
+    }
+  }
+
   if (fixCount > 0) {
     lines.push(pc.green(`✔ ${fixCount} ${plural(fixCount, "issue")} fixed`));
   }
@@ -110,6 +126,26 @@ function formatMessageLine(message: LintMessage): string {
     message.severity === "error" ? pc.red("error") : pc.yellow("warning");
   const rule = message.rule ? pc.dim(message.rule) : "";
   return `  ${position}  ${severity}  ${message.message}  ${rule}`.trimEnd();
+}
+
+/** Per-file blocks listing the fixes applied, for the `--report-fixed` output. */
+function formatFixedSection(summary: LintSummary, cwd: string): string[] {
+  const lines: string[] = [];
+  for (const result of summary.results) {
+    const fixes = result.fixedMessages ?? [];
+    if (fixes.length === 0) continue;
+    const relative = path.relative(cwd, result.filePath) || result.filePath;
+    lines.push(pc.underline(relative));
+    for (const fix of fixes) {
+      const position = pc.dim(`${fix.line}:${fix.column}`);
+      const rule = fix.rule ? pc.dim(fix.rule) : "";
+      lines.push(
+        `  ${position}  ${pc.green("fixed")}  ${fix.message}  ${rule}`.trimEnd(),
+      );
+    }
+    lines.push("");
+  }
+  return lines;
 }
 
 /**
@@ -156,7 +192,10 @@ export function formatGithub(summary: LintSummary, cwd: string): string {
   return lines.join("\n");
 }
 
-export function formatJson(summary: LintSummary): string {
+export function formatJson(
+  summary: LintSummary,
+  options: FormatTextOptions = {},
+): string {
   return JSON.stringify(
     {
       errorCount: summary.errorCount,
@@ -171,6 +210,9 @@ export function formatJson(summary: LintSummary): string {
         fixCount: result.fixCount ?? 0,
         timedOut: result.timedOut ?? false,
         messages: result.messages,
+        ...(options.reportFixed
+          ? { fixedMessages: result.fixedMessages ?? [] }
+          : {}),
       })),
     },
     null,

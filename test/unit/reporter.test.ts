@@ -4,6 +4,7 @@ import {
   applyQuietFilter,
   formatGithub,
   formatJson,
+  formatText,
   plural,
   summarize,
   toLintMessages,
@@ -118,6 +119,87 @@ describe("formatJson", () => {
     expect(json.results[0].fixCount).toBe(0);
     expect(json.results[0].messages).toHaveLength(1);
     expect(json.results[0].messages[0].rule).toBe("cssConflict");
+    // Without the option, fixedMessages are omitted.
+    expect(json.results[0].fixedMessages).toBeUndefined();
+  });
+
+  it("includes fixedMessages when reportFixed is set", () => {
+    const summary = summarize(
+      [
+        {
+          filePath: "a.html",
+          messages: [],
+          errorCount: 0,
+          warningCount: 0,
+          fixCount: 1,
+          fixedMessages: [
+            {
+              rule: "suggestCanonicalClasses",
+              message: "Replace with 'w-xl'",
+              line: 4,
+              column: 17,
+            },
+          ],
+        },
+      ],
+      false,
+    );
+    const json = JSON.parse(formatJson(summary, { reportFixed: true }));
+    expect(json.results[0].fixedMessages).toEqual([
+      {
+        rule: "suggestCanonicalClasses",
+        message: "Replace with 'w-xl'",
+        line: 4,
+        column: 17,
+      },
+    ]);
+  });
+});
+
+describe("formatText reportFixed", () => {
+  const summary = summarize(
+    [
+      {
+        filePath: "src/Button.tsx",
+        messages: [],
+        errorCount: 0,
+        warningCount: 0,
+        fixCount: 2,
+        fixedMessages: [
+          {
+            rule: "cssConflict",
+            message: "Delete 'p-4'",
+            line: 4,
+            column: 27,
+          },
+          {
+            rule: "suggestCanonicalClasses",
+            message: "Replace with 'w-xl'",
+            line: 4,
+            column: 17,
+          },
+        ],
+      },
+    ],
+    false,
+  );
+
+  it("lists applied fixes under a Fixed section when enabled", () => {
+    const text = formatText(summary, ".", { reportFixed: true });
+    expect(text).toContain("Fixed");
+    expect(text).toContain("src/Button.tsx");
+    expect(text).toContain("4:27");
+    expect(text).toContain("Delete 'p-4'");
+    expect(text).toContain("Replace with 'w-xl'");
+    expect(text).toContain("2 issues fixed");
+  });
+
+  it("omits the Fixed section by default", () => {
+    const text = formatText(summary, ".");
+    expect(text).not.toContain("Fixed");
+    expect(text).not.toContain("Delete 'p-4'");
+    // The fix count line is still shown.
+    expect(text).toContain("2 issues fixed");
   });
 });
 
