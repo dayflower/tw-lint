@@ -11,7 +11,7 @@ export default defineConfig({
   platform: "node",
   // The language server is spawned as a subprocess from a vendored copy on disk
   // (see `TW_LINT_LANGUAGE_SERVER_ENTRY`), so it must stay external.
-  external: ["@tailwindcss/language-server"],
+  deps: { neverBundle: ["@tailwindcss/language-server"] },
   dts: false,
   clean: true,
   sourcemap: false,

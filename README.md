@@ -169,7 +169,7 @@ Every value is `"ignore"`, `"warning"` or `"error"`. The defaults match the
 | --- | --- | --- |
 | `invalidScreen` | `error` | Unknown screen name in a `@screen` directive. |
 | `invalidVariant` | `error` | Unknown variant (e.g. `hvr:underline`). |
-| `deprecatedAtRule` | `warning` | A deprecated at-rule is used (e.g. `@screen` in v4). |
+| `deprecatedAtRule` | `warning` | The legacy `@variant name(...)` syntax is used to define a custom variant in v4; use `@custom-variant` instead. |
 | `invalidTailwindDirective` | `error` | Unknown value in a `@tailwind` directive. |
 | `invalidApply` | `error` | A class used in `@apply` cannot be applied. |
 | `invalidConfigPath` | `error` | A `theme()` / `config()` path that does not exist. |
