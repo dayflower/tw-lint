@@ -73,7 +73,7 @@ detect a Tailwind project.
 
 ## GitHub Action
 
-The repo doubles as a reusable GitHub Action (`uses: dayflower/tw-lint@v1`).
+The repo doubles as a reusable GitHub Action (`uses: dayflower/tw-lint@v0`).
 
 - `action.yml` (repo root) is a `runs.using: node24` action whose `main` points at
   the committed bundle `action/index.mjs`. Its inputs map 1:1 to CLI options; keep

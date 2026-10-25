@@ -209,7 +209,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci # install the project's own tailwindcss
-      - uses: dayflower/tw-lint@v1
+      - uses: dayflower/tw-lint@v0
         with:
           globs: "src/**/*.{tsx,html}"
           max-warnings: "0"
